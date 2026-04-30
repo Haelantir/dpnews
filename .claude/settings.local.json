@@ -9,7 +9,12 @@
       "Bash(curl -s http://localhost:3000)",
       "Bash(curl -s http://localhost:3000/news/openai-gpt5-release)",
       "Bash(curl -s http://localhost:3000/knowledge/large-language-model)",
-      "Bash(curl -s http://localhost:3000/admin)"
+      "Bash(curl -s http://localhost:3000/admin)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)"
     ]
   }
 }
