@@ -38,9 +38,9 @@ function parse(markdown: string): Segment[] {
     const plain = stripInline(t);
     if (!plain) continue;
 
-    // ". " "! " "? " 를 경계로 문장 분리
+    // " / " 를 경계로 문장 분리
     const sentences = plain
-      .split(/(?<=[.!?])\s+/)
+      .split(" / ")
       .map((s) => s.trim())
       .filter((s) => s.length > 1);
 
