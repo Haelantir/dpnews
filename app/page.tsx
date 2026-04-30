@@ -1,65 +1,122 @@
-import Image from "next/image";
+import { getAllNews, getAllKnowledge } from "@/lib/content";
+
+export const dynamic = "force-dynamic";
 
 export default function Home() {
+  const newsList = getAllNews();
+  const knowledgeList = getAllKnowledge();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div>
+      <section style={{ marginBottom: "3rem" }}>
+        <h2
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "#888",
+            marginBottom: "1rem",
+          }}
+        >
+          최신 뉴스
+        </h2>
+        {newsList.length === 0 ? (
+          <p style={{ color: "#999", fontSize: "0.9rem" }}>
+            등록된 뉴스가 없습니다.{" "}
+            <a href="/admin">관리 페이지</a>에서 추가해보세요.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {newsList.map((post) => (
+              <li
+                key={post.slug}
+                style={{
+                  borderBottom: "1px solid #e0e0e0",
+                  padding: "0.9rem 0",
+                }}
+              >
+                <a
+                  href={`/news/${post.slug}`}
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "1rem",
+                    color: "#1a1a1a",
+                    display: "block",
+                    marginBottom: "0.2rem",
+                  }}
+                >
+                  {post.title}
+                </a>
+                <p
+                  style={{
+                    color: "#555",
+                    fontSize: "0.875rem",
+                    margin: 0,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {post.summary}
+                </p>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "#999",
+                    marginTop: "0.25rem",
+                    display: "block",
+                  }}
+                >
+                  {post.date}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "#888",
+            marginBottom: "1rem",
+          }}
+        >
+          지식 사전
+        </h2>
+        {knowledgeList.length === 0 ? (
+          <p style={{ color: "#999", fontSize: "0.9rem" }}>
+            등록된 지식이 없습니다.
+          </p>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            {knowledgeList.map((post) => (
+              <a
+                key={post.slug}
+                href={`/knowledge/${post.slug}`}
+                style={{
+                  fontSize: "0.875rem",
+                  color: "#0057ad",
+                  border: "1px solid #d0d0d0",
+                  padding: "0.2rem 0.6rem",
+                  borderRadius: 2,
+                }}
+              >
+                {post.title}
+              </a>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
