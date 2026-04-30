@@ -39,7 +39,6 @@ export default function RootLayout({
             <nav style={{ display: "flex", gap: "1.25rem", fontSize: "0.875rem" }}>
               <a href="/" style={{ color: "#333" }}>최신 뉴스</a>
               <a href="/knowledge" style={{ color: "#333" }}>지식 사전</a>
-              <a href="/admin" style={{ color: "#888" }}>관리</a>
             </nav>
           </header>
           <main>{children}</main>

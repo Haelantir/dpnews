@@ -117,7 +117,7 @@ export default async function NewsPage({
           >
             관련 지식
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
             {relatedPosts.map((k) => (
               <a
                 key={k!.slug}
@@ -126,8 +126,10 @@ export default async function NewsPage({
                   fontSize: "0.875rem",
                   color: "#0057ad",
                   border: "1px solid #d0d0d0",
-                  padding: "0.2rem 0.6rem",
+                  padding: "0.3rem 0.75rem",
                   borderRadius: 2,
+                  display: "block",
+                  width: "fit-content",
                 }}
               >
                 {k!.title}

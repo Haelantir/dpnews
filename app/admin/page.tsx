@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type ContentType = "news" | "knowledge";
 
@@ -48,12 +49,19 @@ const fieldStyle: React.CSSProperties = {
 };
 
 export default function AdminPage() {
+  const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL);
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
 
   function set(key: keyof FormState, val: string) {
     setForm((f) => ({ ...f, [key]: val }));
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth", { method: "DELETE" });
+    router.push("/admin/login");
+    router.refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -83,16 +91,25 @@ export default function AdminPage() {
 
   return (
     <div>
-      <h1
-        style={{
-          fontSize: "1.3rem",
-          fontWeight: 800,
-          marginBottom: "1.75rem",
-          letterSpacing: "-0.02em",
-        }}
-      >
-        콘텐츠 관리
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.75rem" }}>
+        <h1 style={{ fontSize: "1.3rem", fontWeight: 800, margin: 0, letterSpacing: "-0.02em" }}>
+          콘텐츠 관리
+        </h1>
+        <button
+          onClick={handleLogout}
+          style={{
+            fontSize: "0.8rem",
+            color: "#888",
+            background: "none",
+            border: "1px solid #d0d0d0",
+            padding: "0.3rem 0.7rem",
+            borderRadius: 3,
+            cursor: "pointer",
+          }}
+        >
+          로그아웃
+        </button>
+      </div>
 
       {/* 타입 선택 */}
       <div
