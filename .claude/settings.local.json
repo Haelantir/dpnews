@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh codespace *)",
+      "Bash(npm --version)",
+      "Bash(npx create-next-app@latest *)"
+    ]
+  }
+}
