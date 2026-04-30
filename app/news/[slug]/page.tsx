@@ -1,5 +1,5 @@
 import { getNewsPost, getKnowledgePost, getAllNews } from "@/lib/content";
-import { marked } from "marked";
+import { SentenceReader } from "@/components/SentenceReader";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -18,15 +18,12 @@ export default async function NewsPage({
   const post = getNewsPost(slug);
   if (!post) notFound();
 
-  const html = marked(post.content);
-
   const relatedPosts = post.relatedKnowledge
     .map((s) => getKnowledgePost(s))
     .filter(Boolean);
 
   return (
     <article>
-      {/* 메타 정보 */}
       <div
         style={{
           fontSize: "0.75rem",
@@ -39,7 +36,6 @@ export default async function NewsPage({
         뉴스 · {post.date}
       </div>
 
-      {/* 제목 */}
       <h1
         style={{
           fontSize: "1.6rem",
@@ -70,12 +66,7 @@ export default async function NewsPage({
 
       {/* 원문 링크 */}
       {post.source && (
-        <div
-          style={{
-            marginBottom: "2rem",
-            fontSize: "0.8rem",
-          }}
-        >
+        <div style={{ marginBottom: "2rem", fontSize: "0.8rem" }}>
           출처:{" "}
           <a
             href={post.source}
@@ -88,13 +79,16 @@ export default async function NewsPage({
         </div>
       )}
 
-      <hr style={{ border: "none", borderTop: "1px solid #e0e0e0", marginBottom: "1.5rem" }} />
-
-      {/* 본문 */}
-      <div
-        className="prose"
-        dangerouslySetInnerHTML={{ __html: html }}
+      <hr
+        style={{
+          border: "none",
+          borderTop: "1px solid #e0e0e0",
+          marginBottom: "1.75rem",
+        }}
       />
+
+      {/* 본문 — 문장 단위로 순차 등장 */}
+      <SentenceReader content={post.content} />
 
       {/* 관련 지식 */}
       {relatedPosts.length > 0 && (

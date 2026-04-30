@@ -1,5 +1,5 @@
 import { getKnowledgePost, getAllKnowledge } from "@/lib/content";
-import { marked } from "marked";
+import { SentenceReader } from "@/components/SentenceReader";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,6 @@ export default async function KnowledgePage({
   const { slug } = await params;
   const post = getKnowledgePost(slug);
   if (!post) notFound();
-
-  const html = marked(post.content);
 
   const relatedPosts = post.relatedKnowledge
     .map((s) => getKnowledgePost(s))
@@ -44,17 +42,14 @@ export default async function KnowledgePage({
           fontWeight: 800,
           lineHeight: 1.3,
           letterSpacing: "-0.02em",
-          marginBottom: "1.5rem",
+          marginBottom: "2rem",
           color: "#1a1a1a",
         }}
       >
         {post.title}
       </h1>
 
-      <div
-        className="prose"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <SentenceReader content={post.content} />
 
       {relatedPosts.length > 0 && (
         <div
