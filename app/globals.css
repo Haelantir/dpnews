@@ -1,0 +1,129 @@
+/* ── Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Page container ───────────────────────────────────────────────── */
+.page-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* ── Main page button grid ────────────────────────────────────────── */
+.main-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 160px);
+  gap: 12px;
+}
+.main-btn {
+  width: 160px;
+  height: 160px;
+}
+
+/* ── 4-column filter dropdowns ────────────────────────────────────── */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+/* ── 5-column 구 button grid ──────────────────────────────────────── */
+.gu-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+/* ── Chart + side-button layout (3:1) ────────────────────────────── */
+.chart-layout {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.chart-col {
+  grid-column: span 3;
+  min-width: 0;
+}
+.btn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Map / table layout (3:1) ─────────────────────────────────────── */
+.wide-layout {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.wide-col {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+/* ── Slider indent (aligns with Y-axis label) ─────────────────────── */
+.slider-wrap {
+  padding-left: 80px;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page-wrap {
+    padding: 1.25rem 1rem;
+  }
+
+  /* Main: 2-col responsive */
+  .main-btn-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .main-btn {
+    width: 100%;
+    height: 110px;
+  }
+
+  /* Filters: 2x2 */
+  .filter-grid {
+    grid-template-columns: repeat(2, 1fr);
+    margin-bottom: 20px;
+  }
+
+  /* 구 버튼: 3열 */
+  .gu-grid {
+    grid-template-columns: repeat(3, 1fr);
+    margin-bottom: 20px;
+  }
+
+  /* Chart: stack vertically */
+  .chart-layout {
+    grid-template-columns: 1fr;
+  }
+  .chart-col {
+    grid-column: span 1;
+  }
+  /* Buttons: horizontal row */
+  .btn-col {
+    flex-direction: row;
+  }
+
+  /* Map / table: full width */
+  .wide-layout {
+    grid-template-columns: 1fr;
+  }
+  .wide-col {
+    grid-column: span 1;
+  }
+
+  /* Slider: less indent */
+  .slider-wrap {
+    padding-left: 56px;
+  }
+
+  /* Hide desktop spacer columns */
+  .hidden-mobile {
+    display: none;
+  }
+}

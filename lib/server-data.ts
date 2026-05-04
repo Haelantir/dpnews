@@ -145,3 +145,43 @@ export function getTradesRange(gu: string, dong: string, apt: string, minArea: n
     .filter(t => t.area >= minArea && t.area <= maxArea)
     .sort((a, b) => b.date.localeCompare(a.date));
 }
+
+export interface NewHighRecord {
+  aptNm: string;
+  gu: string;
+  dong: string;
+  area: number;
+  date: string;
+  price: number;
+  floor: string;
+}
+
+export function getNewHighsByGu(gu: string): NewHighRecord[] {
+  const index = loadTrades();
+  const results: NewHighRecord[] = [];
+
+  for (const [key, trades] of index.entries()) {
+    const parts = key.split('|');
+    if (parts.length < 3 || parts[1] !== gu) continue;
+    const aptNm = parts[0];
+    const dong = parts[2];
+
+    const byArea = new Map<number, TradeRecord[]>();
+    for (const t of trades) {
+      if (!byArea.has(t.area)) byArea.set(t.area, []);
+      byArea.get(t.area)!.push(t);
+    }
+
+    for (const [area, areaTrades] of byArea.entries()) {
+      if (areaTrades.length < 2) continue;
+      const sorted = [...areaTrades].sort((a, b) => b.date.localeCompare(a.date));
+      const latest = sorted[0];
+      const maxPrice = Math.max(...areaTrades.map(t => t.price));
+      if (latest.price >= maxPrice) {
+        results.push({ aptNm, gu, dong, area, date: latest.date, price: latest.price, floor: latest.floor });
+      }
+    }
+  }
+
+  return results.sort((a, b) => b.date.localeCompare(a.date));
+}

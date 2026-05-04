@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   for (const [key, coord] of Object.entries(coords)) {
     if (key === myKey) continue;
     const dist = haversine(myCoord.lat, myCoord.lng, coord.lat, coord.lng);
-    if (dist > 1000) continue;
+    if (dist > 750) continue;
 
     const [nm, g, d] = key.split('|');
     const aptAreas = (areasIndex as Record<string, number[]>)[key] ?? [];
