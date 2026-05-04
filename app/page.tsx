@@ -347,7 +347,7 @@ export default function Home() {
     const lineW      = isMain ? (prominent ? 2.5  : 1.5)  : 0.8;
     const lineAlpha  = isMain ? (prominent ? 1    : 0.85) : 0.45;
     // 점 스타일: 오버레이 모드 메인=완전 검은 원, 다른 아파트=선 굵기/색 그대로
-    const dotR       = isMain ? (prominent ? 1.25 : 1.8)  : lineW / 2;
+    const dotR       = isMain ? (prominent ? 3    : 1.8)  : lineW / 2;
     const dotColor   = isMain ? '#111' : color;
     const dotAlpha   = isMain ? (prominent ? 1    : 0.85) : lineAlpha;
 
