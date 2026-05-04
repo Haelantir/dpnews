@@ -23,6 +23,11 @@ interface OverlayApt {
 }
 interface TooltipState { x: number; y: number; price: number; ts: number; floor: string; aptNm: string; }
 type ViewMode = 'single' | 'nearby' | 'neighborhood';
+interface MapApt {
+  key: string; aptNm: string; area: number;
+  lat: number; lng: number; color: string;
+  latestDate: string; latestPrice: number;
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -304,6 +309,121 @@ function MinBtn({ label, onClick, disabled, active }: {
   );
 }
 
+// ── ApartmentMap ─────────────────────────────────────────────────────────────
+
+const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const aptsRef = useRef<MapApt[]>(apts);
+  aptsRef.current = apts;
+
+  const placeMarkers = useCallback((mapInst: any, data: MapApt[]) => {
+    import('maplibre-gl').then(mgl => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      if (!data.length) return;
+
+      const bounds = new mgl.LngLatBounds();
+      for (const apt of data) {
+        const outer = document.createElement('div');
+        outer.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:none;';
+
+        const box = document.createElement('div');
+        const isMain = apt.color === '#111';
+        box.style.cssText =
+          `background:#fff;border:${isMain ? '2px' : '1.5px'} solid ${apt.color};` +
+          'border-radius:2px;padding:3px 7px;white-space:nowrap;' +
+          'font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.15);';
+
+        const nm = document.createElement('div');
+        nm.style.cssText = `font-size:11px;font-weight:700;color:${isMain ? '#111' : apt.color};line-height:1.45;`;
+        nm.textContent = `${apt.aptNm} ${apt.area}㎡`;
+
+        const pr = document.createElement('div');
+        pr.style.cssText = 'font-size:10px;color:#555;line-height:1.45;';
+        const [, mm, dd] = apt.latestDate.split('-');
+        pr.textContent = `${Number(mm)}/${Number(dd)} ${formatPrice(apt.latestPrice)}`;
+
+        const tip = document.createElement('div');
+        tip.style.cssText =
+          'width:0;height:0;border-left:5px solid transparent;' +
+          `border-right:5px solid transparent;border-top:6px solid ${apt.color};`;
+
+        box.append(nm, pr);
+        outer.append(box, tip);
+        markersRef.current.push(
+          new mgl.Marker({ element: outer, anchor: 'bottom' })
+            .setLngLat([apt.lng, apt.lat])
+            .addTo(mapInst),
+        );
+        bounds.extend([apt.lng, apt.lat]);
+      }
+
+      if (data.length === 1) {
+        mapInst.flyTo({ center: [data[0].lng, data[0].lat], zoom: 15, duration: 700 });
+      } else {
+        mapInst.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 700 });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let cancelled = false;
+    let mapInst: any = null;
+
+    (async () => {
+      const mgl = await import('maplibre-gl');
+      if (cancelled || !containerRef.current) return;
+      mapInst = new mgl.Map({
+        container: containerRef.current,
+        style: 'https://tiles.openfreemap.org/styles/positron',
+        center: [126.978, 37.566],
+        zoom: 11,
+        attributionControl: false,
+        maxZoom: 18,
+      });
+      mapInst.addControl(new mgl.AttributionControl({ compact: true }), 'bottom-right');
+      mapInst.once('load', () => {
+        if (cancelled) return;
+        // Keep only subway stations + schools in POI layer; hide housenumbers
+        for (const layer of (mapInst.getStyle().layers as any[])) {
+          if (layer['source-layer'] === 'poi') {
+            try {
+              mapInst.setFilter(layer.id, [
+                'any',
+                ['in', ['get', 'class'], ['literal', ['railway', 'school', 'college', 'university', 'kindergarten']]],
+              ]);
+            } catch (_) { /* layer may not support filter */ }
+          }
+          if (layer['source-layer'] === 'housenumber') {
+            try { mapInst.setLayoutProperty(layer.id, 'visibility', 'none'); } catch (_) {}
+          }
+        }
+        mapRef.current = mapInst;
+        placeMarkers(mapInst, aptsRef.current);
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      mapRef.current = null;
+      markersRef.current = [];
+      mapInst?.remove();
+    };
+  }, [placeMarkers]);
+
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    if (m.loaded()) placeMarkers(m, apts);
+    else m.once('load', () => placeMarkers(m, aptsRef.current));
+  }, [apts, placeMarkers]);
+
+  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+});
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 // RangeSlider needs a non-null ref import
@@ -472,6 +592,46 @@ export default function Home() {
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
   const showChart = !!area && trades.length > 0;
+
+  const mapApts = useMemo((): MapApt[] => {
+    if (!showChart || !filterData) return [];
+    const result: MapApt[] = [];
+
+    const mainCoord = filterData.coords[`${apt}|${gu}|${dong}`];
+    if (mainCoord && trades.length > 0) {
+      result.push({
+        key: `${apt}|${gu}|${dong}`, aptNm: apt, area: Number(area),
+        lat: mainCoord.lat, lng: mainCoord.lng, color: '#111',
+        latestDate: trades[0].date, latestPrice: trades[0].price,
+      });
+    }
+    if (viewMode === 'nearby') {
+      for (const o of overlayApts) {
+        const coord = filterData.coords[o.key];
+        if (!coord || !o.trades.length) continue;
+        result.push({
+          key: o.key, aptNm: o.aptNm, area: o.area,
+          lat: coord.lat, lng: coord.lng, color: o.color,
+          latestDate: o.trades[0].date, latestPrice: o.trades[0].price,
+        });
+      }
+    } else if (viewMode === 'neighborhood') {
+      let ci = 0;
+      for (const aptNm of checkedApts) {
+        const t = dongAptData.get(aptNm);
+        if (!t?.length) continue;
+        const coord = filterData.coords[`${aptNm}|${gu}|${dong}`];
+        if (!coord) continue;
+        result.push({
+          key: aptNm, aptNm, area: t[0].area,
+          lat: coord.lat, lng: coord.lng,
+          color: OVERLAY_COLORS[ci++ % OVERLAY_COLORS.length],
+          latestDate: t[0].date, latestPrice: t[0].price,
+        });
+      }
+    }
+    return result;
+  }, [showChart, filterData, apt, gu, dong, area, trades, viewMode, overlayApts, checkedApts, dongAptData]);
   const isOverlayMode = viewMode !== 'single';
   const canUseButtons = showChart && !loading;
   const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
@@ -579,29 +739,41 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Map */}
+          <div style={{ display: 'flex', gap: 16, maxWidth: 720, marginTop: 16 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ width: '100%', aspectRatio: '1/1', border: '1px solid #ddd' }}>
+                <ApartmentMap apts={mapApts} />
+              </div>
+            </div>
+            <div style={{ width: 120, flexShrink: 0 }} />
+          </div>
+
           {/* Table */}
           <div style={{ maxWidth: 640, marginTop: 24 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #111' }}>
-                  {['계약일', '아파트명', '층', '실거래가'].map(h => (
-                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {trades
-                  .filter(t => { const ts = new Date(t.date).getTime(); return ts >= startTs && ts <= endTs; })
-                  .map((t, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{t.date}</td>
-                      <td style={{ padding: '6px 8px' }}>{t.aptNm}</td>
-                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{t.floor}층</td>
-                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(t.price)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+            <div style={{ overflowY: 'auto', maxHeight: 640 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                  <tr>
+                    {['계약일', '아파트명', '층', '실거래가'].map(h => (
+                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap', borderBottom: '2px solid #111' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades
+                    .filter(t => { const ts = new Date(t.date).getTime(); return ts >= startTs && ts <= endTs; })
+                    .map((t, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{t.date}</td>
+                        <td style={{ padding: '6px 8px' }}>{t.aptNm}</td>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{t.floor}층</td>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(t.price)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
