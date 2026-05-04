@@ -75,13 +75,14 @@
     padding: 1.25rem 1rem;
   }
 
-  /* Main: 1-col full width */
+  /* Main: 1-col, 75vw centered */
   .main-btn-grid {
     grid-template-columns: 1fr;
     gap: 8px;
+    justify-items: center;
   }
   .main-btn {
-    width: 100%;
+    width: 75vw;
     height: 52px;
   }
 
