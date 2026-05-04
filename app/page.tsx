@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  ScatterChart, Scatter, XAxis, YAxis, Tooltip,
+  ScatterChart, Scatter, XAxis, YAxis,
   CartesianGrid, ResponsiveContainer,
 } from 'recharts';
 
@@ -124,23 +124,6 @@ function RangeSlider({ startTs, endTs, onChange }: {
   );
 }
 
-// ── Custom Tooltip ───────────────────────────────────────────────────────────
-
-function ChartTooltip({ active, payload }: {
-  active?: boolean;
-  payload?: { payload: { ts: number; price: number; floor: string } }[];
-}) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div style={{ background: '#fff', border: '1px solid #333', padding: '6px 10px', fontSize: 12, lineHeight: 1.6 }}>
-      <div>{new Date(d.ts).toLocaleDateString('ko-KR')}</div>
-      <div>{formatPrice(d.price)}</div>
-      <div>{d.floor}층</div>
-    </div>
-  );
-}
-
 // ── Dropdown ─────────────────────────────────────────────────────────────────
 
 function Select({ value, onChange, options, placeholder, disabled }: {
@@ -169,6 +152,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [startTs, setStartTs] = useState(MIN_TS);
   const [endTs, setEndTs] = useState(MAX_TS);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; price: number; ts: number; floor: string } | null>(null);
 
   useEffect(() => {
     fetch('/api/filter-data').then(r => r.json()).then(setFilterData);
@@ -225,6 +209,9 @@ export default function Home() {
 
   // 점 위치 캐시 (같은 render 내에서 이전 점 좌표를 선 그리기에 활용)
   const dotPos = useRef<{ cx: number; cy: number }[]>([]);
+  // 이벤트 핸들러에서 최신 chartData를 참조하기 위한 ref
+  const chartDataRef = useRef(chartData);
+  chartDataRef.current = chartData;
 
   // shape: 선(이전 점→현재 점) + 점을 한 번에 렌더
   const renderShape = useCallback((props: {
@@ -247,13 +234,24 @@ export default function Home() {
             strokeOpacity={isAbnormalSeg ? 0.18 : 0.85}
           />
         )}
+        <circle cx={cx} cy={cy} r={5}
+          fill="transparent"
+          style={{ cursor: 'crosshair' }}
+          onMouseEnter={(e) => {
+            const d = chartDataRef.current[index];
+            if (!d) return;
+            setTooltip({ x: e.clientX, y: e.clientY, price: d.price, ts: d.ts, floor: d.floor });
+          }}
+          onMouseLeave={() => setTooltip(null)}
+        />
         <circle cx={cx} cy={cy} r={1.8}
           fill={isAbnormal ? '#bbb' : '#111'}
           fillOpacity={isAbnormal ? 0.22 : 0.85}
+          style={{ pointerEvents: 'none' }}
         />
       </g>
     );
-  }, [abnormalSet]);
+  }, [abnormalSet, setTooltip]);
 
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
@@ -298,7 +296,6 @@ export default function Home() {
                   tick={{ fontSize: 11, fill: '#555' }}
                   width={56}
                 />
-                <Tooltip cursor={false} content={<ChartTooltip />} />
                 <Scatter
                   data={chartData}
                   isAnimationActive={false}
@@ -346,6 +343,26 @@ export default function Home() {
       )}
 
       {loading && <div style={{ color: '#888', fontSize: 13 }}>불러오는 중...</div>}
+
+      {tooltip && (
+        <div style={{
+          position: 'fixed',
+          left: tooltip.x + 14,
+          top: tooltip.y - 14,
+          background: '#fff',
+          border: '1px solid #333',
+          padding: '6px 10px',
+          fontSize: 12,
+          lineHeight: 1.6,
+          pointerEvents: 'none',
+          zIndex: 1000,
+          whiteSpace: 'nowrap',
+        }}>
+          <div>{new Date(tooltip.ts).toLocaleDateString('ko-KR')}</div>
+          <div>{formatPrice(tooltip.price)}</div>
+          <div>{tooltip.floor}층</div>
+        </div>
+      )}
     </div>
   );
 }
