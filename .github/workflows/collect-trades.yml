@@ -1,0 +1,35 @@
+name: Collect Seoul Apartment Trades
+
+on:
+  schedule:
+    - cron: '0 14 * * *'  # 매일 23:00 KST (UTC+9)
+  workflow_dispatch:        # GitHub Actions UI에서 수동 실행 가능
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pandas numpy
+
+      - name: Run data collection
+        run: python data/collect.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/서울_실거래가_*.csv
+          git diff --staged --quiet || git commit -m "data: 서울 아파트 실거래가 업데이트 $(date +'%Y-%m-%d')"
+          git push
