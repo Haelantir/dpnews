@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  ScatterChart, Scatter, XAxis, YAxis, Tooltip,
+  ComposedChart, Scatter, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer,
 } from 'recharts';
 
@@ -32,12 +32,7 @@ function formatPrice(만원: number): string {
   const 나머지 = 만원 % 10000;
   if (억 === 0) return `${만원.toLocaleString()}만`;
   if (나머지 === 0) return `${억}억`;
-  const 천 = Math.floor(나머지 / 1000);
-  const 하위 = 나머지 % 1000;
-  let 나머지str = '';
-  if (천 > 0) 나머지str += `${천}천`;
-  if (하위 > 0) 나머지str += `${하위}`;
-  return `${억}억 ${나머지str}만`;
+  return `${억}억 ${나머지.toLocaleString()}만`;
 }
 
 function tsToLabel(ts: number): string {
@@ -227,7 +222,8 @@ export default function Home() {
   // Scatter data
   const chartData = trades
     .map(t => ({ ts: new Date(t.date).getTime(), price: t.price, floor: t.floor }))
-    .filter(d => !isNaN(d.ts) && d.ts >= startTs && d.ts <= endTs);
+    .filter(d => !isNaN(d.ts) && d.ts >= startTs && d.ts <= endTs)
+    .sort((a, b) => a.ts - b.ts);
 
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
@@ -263,7 +259,7 @@ export default function Home() {
             border: '1px solid #ddd', marginBottom: 0,
           }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
+              <ComposedChart data={chartData} margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis
                   dataKey="ts"
@@ -286,8 +282,13 @@ export default function Home() {
                   width={52}
                 />
                 <Tooltip content={<ChartTooltip />} />
-                <Scatter data={chartData} fill="#111" opacity={0.7} r={3} />
-              </ScatterChart>
+                <Line
+                  dataKey="price" stroke="#aaa" strokeWidth={1}
+                  dot={false} activeDot={false} legendType="none"
+                  isAnimationActive={false}
+                />
+                <Scatter dataKey="price" fill="#111" opacity={0.7} r={3} />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 
