@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useTransition, memo } from 'react';
 import {
-  ScatterChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   useXAxisScale, useYAxisScale, usePlotArea,
 } from 'recharts';
 
@@ -16,7 +16,7 @@ interface FilterData {
 }
 interface Trade { date: string; area: number; price: number; floor: string; aptNm: string; }
 interface ChartPoint { ts: number; price: number; floor: string; aptNm: string; }
-interface OverlayLine { key: string; color: string; points: ChartPoint[]; }
+interface OverlayLine { key: string; color: string; points: ChartPoint[]; label: string; }
 interface OverlayApt {
   key: string; aptNm: string; gu: string; dong: string;
   area: number; trades: Trade[]; color: string;
@@ -438,17 +438,26 @@ export default function Home() {
   }, [chartData]);
 
   const overlayLines = useMemo((): OverlayLine[] =>
-    overlayApts.map(o => ({ key: o.key, color: o.color, points: toChartPoints(o.trades, startTs, endTs) })),
+    overlayApts.map(o => ({
+      key: o.key, color: o.color,
+      points: toChartPoints(o.trades, startTs, endTs),
+      label: `${o.aptNm} (${o.area}㎡)`,
+    })),
     [overlayApts, startTs, endTs],
   );
 
   const dongLines = useMemo((): OverlayLine[] => {
     let ci = 0;
-    return Array.from(checkedApts).map(aptNm => ({
-      key: aptNm,
-      color: OVERLAY_COLORS[ci++ % OVERLAY_COLORS.length],
-      points: toChartPoints(dongAptData.get(aptNm) ?? [], startTs, endTs),
-    }));
+    return Array.from(checkedApts).map(aptNm => {
+      const trades = dongAptData.get(aptNm) ?? [];
+      const firstArea = trades[0]?.area;
+      return {
+        key: aptNm,
+        color: OVERLAY_COLORS[ci++ % OVERLAY_COLORS.length],
+        points: toChartPoints(trades, startTs, endTs),
+        label: firstArea ? `${aptNm} (${firstArea}㎡)` : aptNm,
+      };
+    });
   }, [checkedApts, dongAptData, startTs, endTs]);
 
   const allOverlayLines = viewMode === 'nearby' ? overlayLines : viewMode === 'neighborhood' ? dongLines : [];
@@ -506,6 +515,13 @@ export default function Home() {
                       tickFormatter={formatYTick}
                       tick={{ fontSize: 11, fill: '#555' }} width={56}
                     />
+                    {/* 축 스케일 초기화용 invisible Scatter (useXAxisScale/useYAxisScale 활성화) */}
+                    <Scatter
+                      data={chartData.length > 0 ? chartData : [{ ts: startTs, price: yDomain[0] }]}
+                      isAnimationActive={false}
+                      shape={() => null as unknown as React.ReactElement}
+                      opacity={0}
+                    />
                     <ChartLines
                       mainPoints={chartData}
                       overlayLines={allOverlayLines}
@@ -532,7 +548,7 @@ export default function Home() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, color: '#333', marginBottom: 12, paddingLeft: 4 }}>
                   <span><b style={{ color: '#111' }}>●</b> {apt} ({area}㎡)</span>
                   {[...legendNearby, ...legendDong].map(o => (
-                    <span key={o.key}><b style={{ color: o.color }}>●</b> {o.points.length > 0 ? o.key.split('|')[0] : o.key}</span>
+                    <span key={o.key}><b style={{ color: o.color }}>●</b> {o.label}</span>
                   ))}
                 </div>
               )}
