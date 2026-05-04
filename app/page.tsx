@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useTransition, memo } from 'react';
 import {
-  ScatterChart, Scatter, XAxis, YAxis,
-  CartesianGrid, ResponsiveContainer,
+  ScatterChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
+  useXAxisScale, useYAxisScale, usePlotArea,
 } from 'recharts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -14,32 +14,20 @@ interface FilterData {
   아파트s: Record<string, string[]>;
   coords: Record<string, { lat: number; lng: number }>;
 }
-
-interface Trade {
-  date: string;
-  area: number;
-  price: number;
-  floor: string;
-  aptNm: string;
-}
-
+interface Trade { date: string; area: number; price: number; floor: string; aptNm: string; }
+interface ChartPoint { ts: number; price: number; floor: string; aptNm: string; }
+interface OverlayLine { key: string; color: string; points: ChartPoint[]; }
 interface OverlayApt {
-  key: string;
-  aptNm: string;
-  gu: string;
-  dong: string;
-  area: number;
-  trades: Trade[];
-  color: string;
+  key: string; aptNm: string; gu: string; dong: string;
+  area: number; trades: Trade[]; color: string;
 }
-
+interface TooltipState { x: number; y: number; price: number; ts: number; floor: string; aptNm: string; }
 type ViewMode = 'single' | 'nearby' | 'neighborhood';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MIN_TS = new Date('2020-01-01').getTime();
 const MAX_TS = Date.now();
-
 const OVERLAY_COLORS = [
   '#2563eb', '#16a34a', '#dc2626', '#d97706', '#7c3aed',
   '#0891b2', '#be185d', '#65a30d', '#c2410c', '#0f766e',
@@ -79,62 +67,206 @@ function getYTicks(minP: number, maxP: number): number[] {
 }
 
 function formatYTick(v: number): string {
-  const num = Number(v);
-  const 억 = Math.floor(num / 10000);
-  const 나머지 = num % 10000;
+  const n = Number(v);
+  const 억 = Math.floor(n / 10000);
+  const 나머지 = n % 10000;
   if (억 === 0) return 나머지 % 1000 === 0 ? `${나머지 / 1000}천만` : `${나머지}만`;
   if (나머지 === 0) return `${억}억`;
   if (나머지 % 1000 === 0) return `${억}억${나머지 / 1000}천만`;
   return `${억}억${나머지.toLocaleString()}만`;
 }
 
-function tradesToChartData(trades: Trade[], startTs: number, endTs: number) {
+function toChartPoints(trades: Trade[], s: number, e: number): ChartPoint[] {
   return trades
     .map(t => ({ ts: new Date(t.date).getTime(), price: t.price, floor: t.floor, aptNm: t.aptNm }))
-    .filter(d => !isNaN(d.ts) && d.ts >= startTs && d.ts <= endTs)
+    .filter(d => !isNaN(d.ts) && d.ts >= s && d.ts <= e)
     .sort((a, b) => a.ts - b.ts);
 }
+
+// ── ChartLines (rendered inside ScatterChart, uses recharts 3.x hooks) ────────
+
+const ChartLines = memo(function ChartLines({
+  mainPoints, overlayLines, abnormalSet, isOverlayMode, setTooltip,
+}: {
+  mainPoints: ChartPoint[];
+  overlayLines: OverlayLine[];
+  abnormalSet: Set<number>;
+  isOverlayMode: boolean;
+  setTooltip: (t: TooltipState | null) => void;
+}) {
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+  const plotArea = usePlotArea();
+
+  // Build SVG path string from points array
+  const buildPath = useCallback((pts: ChartPoint[]) => {
+    if (!xScale || !yScale || pts.length === 0) return '';
+    return pts.map((p, i) => {
+      const x = (xScale(p.ts) ?? 0).toFixed(1);
+      const y = (yScale(p.price) ?? 0).toFixed(1);
+      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+    }).join('');
+  }, [xScale, yScale]);
+
+  // Main line: split normal segments from abnormal segments
+  const { normalPath, abnUnderPath } = useMemo(() => {
+    if (!mainPoints.length || !xScale || !yScale) return { normalPath: '', abnUnderPath: '' };
+    if (isOverlayMode || !abnormalSet.size) return { normalPath: buildPath(mainPoints), abnUnderPath: '' };
+
+    // abnUnderPath = full path drawn at low opacity (shows abnormal segments)
+    const abnUnderPath = buildPath(mainPoints);
+    // normalPath = only non-abnormal segments (M instead of L for abnormal gaps)
+    let norm = '';
+    for (let i = 0; i < mainPoints.length; i++) {
+      const x = (xScale(mainPoints[i].ts) ?? 0).toFixed(1);
+      const y = (yScale(mainPoints[i].price) ?? 0).toFixed(1);
+      if (i === 0) { norm += `M${x},${y}`; continue; }
+      const isAbnSeg = abnormalSet.has(i - 1) || abnormalSet.has(i);
+      norm += isAbnSeg ? ` M${x},${y}` : `L${x},${y}`;
+    }
+    return { normalPath: norm, abnUnderPath };
+  }, [mainPoints, abnormalSet, isOverlayMode, buildPath, xScale, yScale]);
+
+  // Overlay paths (memoised per-line)
+  const overlayPaths = useMemo(() =>
+    overlayLines.map(o => ({ key: o.key, color: o.color, d: buildPath(o.points) })),
+    [overlayLines, buildPath],
+  );
+
+  // Nearest-point hover on single rect (no per-point hit circles)
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
+    if (!xScale || !yScale) return;
+    const svg = (e.currentTarget as Element).closest('svg');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    let bestD = Infinity;
+    let bestPt: ChartPoint | null = null;
+
+    const scan = (pts: ChartPoint[]) => {
+      for (const p of pts) {
+        const dx = (xScale(p.ts) ?? 0) - mx;
+        const dy = (yScale(p.price) ?? 0) - my;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; bestPt = p; }
+      }
+    };
+    scan(mainPoints);
+    for (const o of overlayLines) scan(o.points);
+
+    if (bestPt && Math.sqrt(bestD) < 18) {
+      const p = bestPt as ChartPoint;
+      setTooltip({ x: e.clientX, y: e.clientY, price: p.price, ts: p.ts, floor: p.floor, aptNm: p.aptNm });
+    } else {
+      setTooltip(null);
+    }
+  }, [xScale, yScale, mainPoints, overlayLines, setTooltip]);
+
+  if (!xScale || !yScale || !plotArea) return null;
+
+  const mainLineColor = isOverlayMode ? '#111' : '#bbb';
+  const mainLineW = isOverlayMode ? 2.5 : 1.5;
+  const mainLineAlpha = isOverlayMode ? 1 : 0.85;
+  const mainDotR = isOverlayMode ? 3 : 1.8;
+
+  return (
+    <g>
+      {/* Overlay lines (behind main) */}
+      {overlayPaths.map(({ key, color, d }) => d && (
+        <path key={key} d={d} fill="none"
+          stroke={color} strokeWidth={0.8} strokeOpacity={0.45}
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      ))}
+
+      {/* Main: abnormal underlay */}
+      {abnUnderPath && (
+        <path d={abnUnderPath} fill="none"
+          stroke="#bbb" strokeWidth={mainLineW} strokeOpacity={0.15}
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      )}
+
+      {/* Main: normal path */}
+      {normalPath && (
+        <path d={normalPath} fill="none"
+          stroke={mainLineColor} strokeWidth={mainLineW} strokeOpacity={mainLineAlpha}
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      )}
+
+      {/* Main: visible dots */}
+      {mainPoints.map((p, i) => {
+        const isAbn = !isOverlayMode && abnormalSet.has(i);
+        return (
+          <circle key={i}
+            cx={xScale(p.ts) ?? 0} cy={yScale(p.price) ?? 0}
+            r={mainDotR}
+            fill={isAbn ? '#bbb' : '#111'}
+            fillOpacity={isAbn ? 0.22 : (isOverlayMode ? 1 : 0.85)}
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })}
+
+      {/* Single hover rect — replaces all per-point hit circles */}
+      <rect
+        x={plotArea.x} y={plotArea.y}
+        width={plotArea.width} height={plotArea.height}
+        fill="transparent" style={{ cursor: 'crosshair' }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setTooltip(null)}
+      />
+    </g>
+  );
+});
 
 // ── Range Slider ─────────────────────────────────────────────────────────────
 
 function RangeSlider({ startTs, endTs, onChange }: {
   startTs: number; endTs: number;
-  onChange: (start: number, end: number) => void;
+  onChange: (s: number, e: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<'left' | 'right' | null>(null);
   const tsToRatio = (ts: number) => (ts - MIN_TS) / (MAX_TS - MIN_TS);
   const ratioToTs = (r: number) => Math.round(MIN_TS + r * (MAX_TS - MIN_TS));
-  const posToRatio = useCallback((clientX: number) => {
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return 0;
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const posToRatio = useCallback((cx: number) => {
+    const r = trackRef.current?.getBoundingClientRect();
+    if (!r) return 0;
+    return Math.max(0, Math.min(1, (cx - r.left) / r.width));
   }, []);
-  const onMouseMove = useCallback((e: MouseEvent) => {
+  const onMM = useCallback((e: MouseEvent) => {
     if (!dragging.current) return;
-    const r = posToRatio(e.clientX);
-    const ts = ratioToTs(r);
+    const ts = ratioToTs(posToRatio(e.clientX));
     if (dragging.current === 'left') onChange(Math.min(ts, endTs - 86400000), endTs);
     else onChange(startTs, Math.max(ts, startTs + 86400000));
   }, [startTs, endTs, onChange, posToRatio]);
-  const onMouseUp = useCallback(() => { dragging.current = null; }, []);
+  const onMU = useCallback(() => { dragging.current = null; }, []);
   useEffect(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
-  }, [onMouseMove, onMouseUp]);
-  const leftPct = tsToRatio(startTs) * 100;
-  const rightPct = tsToRatio(endTs) * 100;
+    window.addEventListener('mousemove', onMM);
+    window.addEventListener('mouseup', onMU);
+    return () => { window.removeEventListener('mousemove', onMM); window.removeEventListener('mouseup', onMU); };
+  }, [onMM, onMU]);
+  const lp = tsToRatio(startTs) * 100;
+  const rp = tsToRatio(endTs) * 100;
+  const handleStyle = (left: number): React.CSSProperties => ({
+    position: 'absolute', top: '50%', left: `${left}%`,
+    transform: 'translate(-50%,-50%)', width: 14, height: 14,
+    background: '#111', cursor: 'ew-resize',
+    border: '2px solid #fff', boxShadow: '0 0 0 1px #111',
+  });
   return (
     <div style={{ padding: '8px 0 4px', userSelect: 'none' }}>
       <div ref={trackRef} style={{ position: 'relative', height: 4, background: '#ddd', margin: '12px 0' }}>
-        <div style={{ position: 'absolute', top: 0, height: '100%', background: '#333', left: `${leftPct}%`, width: `${rightPct - leftPct}%` }} />
-        <div onMouseDown={() => { dragging.current = 'left'; }} style={{ position: 'absolute', top: '50%', left: `${leftPct}%`, transform: 'translate(-50%,-50%)', width: 14, height: 14, background: '#111', cursor: 'ew-resize', border: '2px solid #fff', boxShadow: '0 0 0 1px #111' }} />
-        <div onMouseDown={() => { dragging.current = 'right'; }} style={{ position: 'absolute', top: '50%', left: `${rightPct}%`, transform: 'translate(-50%,-50%)', width: 14, height: 14, background: '#111', cursor: 'ew-resize', border: '2px solid #fff', boxShadow: '0 0 0 1px #111' }} />
+        <div style={{ position: 'absolute', top: 0, height: '100%', background: '#333', left: `${lp}%`, width: `${rp - lp}%` }} />
+        <div onMouseDown={() => { dragging.current = 'left'; }} style={handleStyle(lp)} />
+        <div onMouseDown={() => { dragging.current = 'right'; }} style={handleStyle(rp)} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
-        <span>{tsToLabel(startTs)}</span>
-        <span>{tsToLabel(endTs)}</span>
+        <span>{tsToLabel(startTs)}</span><span>{tsToLabel(endTs)}</span>
       </div>
     </div>
   );
@@ -174,6 +306,9 @@ function MinBtn({ label, onClick, disabled, active }: {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// RangeSlider needs a non-null ref import
+import { useRef } from 'react';
+
 export default function Home() {
   const [filterData, setFilterData] = useState<FilterData | null>(null);
   const [gu, setGu] = useState('');
@@ -183,16 +318,22 @@ export default function Home() {
   const [areas, setAreas] = useState<number[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Slider state: immediate (visual) vs deferred (chart data)
+  const [sliderStart, setSliderStart] = useState(MIN_TS);
+  const [sliderEnd, setSliderEnd] = useState(MAX_TS);
   const [startTs, setStartTs] = useState(MIN_TS);
   const [endTs, setEndTs] = useState(MAX_TS);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; price: number; ts: number; floor: string; aptNm: string } | null>(null);
+  const [, startTransition] = useTransition();
 
-  // 모드
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
+  // Mode
   const [viewMode, setViewMode] = useState<ViewMode>('single');
   const [overlayApts, setOverlayApts] = useState<OverlayApt[]>([]);
   const [loadingOverlay, setLoadingOverlay] = useState(false);
 
-  // 우리동네 전용
+  // 우리동네
   const [dongAptList, setDongAptList] = useState<string[]>([]);
   const [checkedApts, setCheckedApts] = useState<Set<string>>(new Set());
   const [dongAptData, setDongAptData] = useState<Map<string, Trade[]>>(new Map());
@@ -205,7 +346,7 @@ export default function Home() {
   useEffect(() => {
     if (!gu || !dong || !apt) { setAreas([]); setArea(''); setTrades([]); return; }
     fetch(`/api/areas?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}`)
-      .then(r => r.json()).then((data: number[]) => { setAreas(data); setArea(''); setTrades([]); });
+      .then(r => r.json()).then((d: number[]) => { setAreas(d); setArea(''); setTrades([]); });
   }, [gu, dong, apt]);
 
   useEffect(() => {
@@ -213,55 +354,55 @@ export default function Home() {
     setLoading(true);
     fetch(`/api/trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`)
       .then(r => r.json())
-      .then((data: Trade[]) => { setTrades(data); setStartTs(MIN_TS); setEndTs(MAX_TS); })
+      .then((d: Trade[]) => {
+        setTrades(d);
+        setSliderStart(MIN_TS); setSliderEnd(MAX_TS);
+        setStartTs(MIN_TS); setEndTs(MAX_TS);
+      })
       .finally(() => setLoading(false));
   }, [gu, dong, apt, area]);
 
-  const resetMode = () => {
+  const resetMode = useCallback(() => {
     setViewMode('single');
     setOverlayApts([]);
     setDongAptList([]);
     setCheckedApts(new Set());
     setDongAptData(new Map());
-  };
+  }, []);
 
   const handleGuChange = (v: string) => { setGu(v); setDong(''); setApt(''); setArea(''); setTrades([]); resetMode(); };
   const handleDongChange = (v: string) => { setDong(v); setApt(''); setArea(''); setTrades([]); resetMode(); };
   const handleAptChange = (v: string) => { setApt(v); setArea(''); setTrades([]); resetMode(); };
-  const handleRangeChange = useCallback((s: number, e: number) => { setStartTs(s); setEndTs(e); }, []);
 
-  // 옆단지 함께보기
+  // Slider: handle moves immediately, chart data updates deferred
+  const handleRangeChange = useCallback((s: number, e: number) => {
+    setSliderStart(s); setSliderEnd(e);
+    startTransition(() => { setStartTs(s); setEndTs(e); });
+  }, [startTransition]);
+
   const handleNearby = async () => {
     if (viewMode === 'nearby') { resetMode(); return; }
     resetMode();
     setViewMode('nearby');
     setLoadingOverlay(true);
     try {
-      const res = await fetch(
-        `/api/nearby-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`
-      );
+      const res = await fetch(`/api/nearby-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`);
       const data: { aptNm: string; gu: string; dong: string; area: number; trades: Trade[] }[] = await res.json();
       setOverlayApts(data.map((d, i) => ({
         key: `${d.aptNm}|${d.gu}|${d.dong}`,
-        ...d,
-        color: OVERLAY_COLORS[i % OVERLAY_COLORS.length],
+        ...d, color: OVERLAY_COLORS[i % OVERLAY_COLORS.length],
       })));
-    } finally {
-      setLoadingOverlay(false);
-    }
+    } finally { setLoadingOverlay(false); }
   };
 
-  // 우리동네 함께보기
   const handleNeighborhood = () => {
     if (viewMode === 'neighborhood') { resetMode(); return; }
     resetMode();
     setViewMode('neighborhood');
     if (!filterData || !gu || !dong) return;
-    const allApts = filterData.아파트s[`${gu}|${dong}`] ?? [];
-    setDongAptList(allApts.filter(a => a !== apt));
+    setDongAptList((filterData.아파트s[`${gu}|${dong}`] ?? []).filter(a => a !== apt));
   };
 
-  // 체크박스 토글
   const toggleDongApt = async (aptNm: string) => {
     const next = new Set(checkedApts);
     if (next.has(aptNm)) {
@@ -273,12 +414,8 @@ export default function Home() {
       if (!dongAptData.has(aptNm)) {
         setLoadingDong(prev => new Set(prev).add(aptNm));
         const areaNum = Number(area);
-        const minArea = areaNum * 0.9;
-        const maxArea = areaNum * 1.1;
         try {
-          const res = await fetch(
-            `/api/dong-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(aptNm)}&minArea=${minArea}&maxArea=${maxArea}`
-          );
+          const res = await fetch(`/api/dong-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(aptNm)}&minArea=${areaNum * 0.9}&maxArea=${areaNum * 1.1}`);
           const data: Trade[] = await res.json();
           setDongAptData(prev => new Map(prev).set(aptNm, data));
         } finally {
@@ -288,140 +425,51 @@ export default function Home() {
     }
   };
 
-  // 차트 데이터
-  const chartData = useMemo(() =>
-    tradesToChartData(trades, startTs, endTs),
-    [trades, startTs, endTs],
-  );
+  // Chart data (deferred via startTs/endTs)
+  const chartData = useMemo(() => toChartPoints(trades, startTs, endTs), [trades, startTs, endTs]);
 
-  // 비정상 거래 탐지
   const abnormalSet = useMemo(() => {
     const s = new Set<number>();
     for (let i = 1; i < chartData.length - 1; i++) {
-      const prev = chartData[i - 1].price;
-      const curr = chartData[i].price;
-      const next = chartData[i + 1].price;
+      const prev = chartData[i - 1].price, curr = chartData[i].price, next = chartData[i + 1].price;
       if (Math.abs(curr - prev) / prev >= 0.2 && Math.abs(curr - next) / next >= 0.2) s.add(i);
     }
     return s;
   }, [chartData]);
 
-  // Y축 범위: 메인 + 오버레이 전체 포함
+  const overlayLines = useMemo((): OverlayLine[] =>
+    overlayApts.map(o => ({ key: o.key, color: o.color, points: toChartPoints(o.trades, startTs, endTs) })),
+    [overlayApts, startTs, endTs],
+  );
+
+  const dongLines = useMemo((): OverlayLine[] => {
+    let ci = 0;
+    return Array.from(checkedApts).map(aptNm => ({
+      key: aptNm,
+      color: OVERLAY_COLORS[ci++ % OVERLAY_COLORS.length],
+      points: toChartPoints(dongAptData.get(aptNm) ?? [], startTs, endTs),
+    }));
+  }, [checkedApts, dongAptData, startTs, endTs]);
+
+  const allOverlayLines = viewMode === 'nearby' ? overlayLines : viewMode === 'neighborhood' ? dongLines : [];
+
   const yTicks = useMemo(() => {
-    const allPrices = chartData.map(d => d.price);
-    if (viewMode === 'nearby') {
-      for (const o of overlayApts) {
-        for (const t of tradesToChartData(o.trades, startTs, endTs)) allPrices.push(t.price);
-      }
-    } else if (viewMode === 'neighborhood') {
-      for (const [nm, tlist] of dongAptData) {
-        if (!checkedApts.has(nm)) continue;
-        for (const t of tradesToChartData(tlist, startTs, endTs)) allPrices.push(t.price);
-      }
-    }
-    if (!allPrices.length) return [0, 100000];
-    return getYTicks(Math.min(...allPrices), Math.max(...allPrices));
-  }, [chartData, overlayApts, dongAptData, checkedApts, viewMode, startTs, endTs]);
-
-  // 점 위치 캐시 (키별)
-  const dotPosMap = useRef<Map<string, { cx: number; cy: number }[]>>(new Map());
-  const chartDataRef = useRef(chartData);
-  chartDataRef.current = chartData;
-  const overlayAptsRef = useRef(overlayApts);
-  overlayAptsRef.current = overlayApts;
-  const dongAptDataRef = useRef(dongAptData);
-  dongAptDataRef.current = dongAptData;
-
-  useEffect(() => { dotPosMap.current = new Map(); }, [chartData, overlayApts, dongAptData, checkedApts]);
-
-  const makeRenderShape = useCallback((
-    aptKey: string,
-    color: string,
-    isMain: boolean,
-    abnSet: Set<number>,
-    dataRef: React.MutableRefObject<{ ts: number; price: number; floor: string; aptNm: string }[]>,
-    prominent = false,  // 오버레이 모드에서 메인 아파트 강조
-  ) => {
-    // 선 스타일
-    const lineColor  = isMain ? (prominent ? '#111' : '#bbb') : color;
-    const lineW      = isMain ? (prominent ? 2.5  : 1.5)  : 0.8;
-    const lineAlpha  = isMain ? (prominent ? 1    : 0.85) : 0.45;
-    // 점 스타일: 오버레이 모드 메인=완전 검은 원, 다른 아파트=선 굵기/색 그대로
-    const dotR       = isMain ? (prominent ? 3    : 1.8)  : lineW / 2;
-    const dotColor   = isMain ? '#111' : color;
-    const dotAlpha   = isMain ? (prominent ? 1    : 0.85) : lineAlpha;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (props: any) => {
-      const { cx, cy, index } = props as { cx: number; cy: number; index: number };
-      const posMap = dotPosMap.current;
-      if (index === 0) posMap.set(aptKey, []);
-      const pos = posMap.get(aptKey) ?? [];
-      pos[index] = { cx, cy };
-      posMap.set(aptKey, pos);
-
-      const prev = index > 0 ? pos[index - 1] : null;
-      // 비정상 거래 표시는 싱글 모드 메인에서만
-      const isAbnormal    = !prominent && isMain && abnSet.has(index);
-      const isAbnormalSeg = !prominent && isMain && !!prev && (abnSet.has(index - 1) || abnSet.has(index));
-
-      return (
-        <g>
-          {prev && (
-            <line
-              x1={prev.cx} y1={prev.cy} x2={cx} y2={cy}
-              stroke={lineColor}
-              strokeWidth={lineW}
-              strokeOpacity={isAbnormalSeg ? 0.15 : lineAlpha}
-            />
-          )}
-          <circle cx={cx} cy={cy} r={7} fill="transparent" style={{ cursor: 'crosshair' }}
-            onMouseEnter={(e) => {
-              const d = dataRef.current[index];
-              if (!d) return;
-              setTooltip({ x: e.clientX, y: e.clientY, price: d.price, ts: d.ts, floor: d.floor, aptNm: d.aptNm });
-            }}
-            onMouseLeave={() => setTooltip(null)}
-          />
-          <circle cx={cx} cy={cy} r={dotR}
-            fill={isAbnormal ? '#bbb' : dotColor}
-            fillOpacity={isAbnormal ? 0.22 : dotAlpha}
-            style={{ pointerEvents: 'none' }}
-          />
-        </g>
-      );
-    };
-  }, []);
+    const prices = chartData.map(d => d.price);
+    for (const o of allOverlayLines) for (const p of o.points) prices.push(p.price);
+    if (!prices.length) return [0, 100000];
+    return getYTicks(Math.min(...prices), Math.max(...prices));
+  }, [chartData, allOverlayLines]);
 
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
   const showChart = !!area && trades.length > 0;
-  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
+  const isOverlayMode = viewMode !== 'single';
   const canUseButtons = showChart && !loading;
+  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
 
-  // 오버레이 데이터 → 차트용 (refs 별도 관리)
-  const overlayChartData = useMemo(() =>
-    overlayApts.map(o => ({
-      ...o,
-      chartPoints: tradesToChartData(o.trades, startTs, endTs),
-    })),
-    [overlayApts, startTs, endTs],
-  );
-
-  const dongCheckedData = useMemo(() => {
-    const result: { aptNm: string; color: string; chartPoints: ReturnType<typeof tradesToChartData> }[] = [];
-    let ci = 0;
-    for (const aptNm of checkedApts) {
-      const tlist = dongAptData.get(aptNm) ?? [];
-      result.push({
-        aptNm,
-        color: OVERLAY_COLORS[ci % OVERLAY_COLORS.length],
-        chartPoints: tradesToChartData(tlist, startTs, endTs),
-      });
-      ci++;
-    }
-    return result;
-  }, [checkedApts, dongAptData, startTs, endTs]);
+  // Legend data
+  const legendNearby = viewMode === 'nearby' ? overlayLines : [];
+  const legendDong = viewMode === 'neighborhood' ? dongLines : [];
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -434,12 +482,13 @@ export default function Home() {
         <Select value={area} onChange={v => { setArea(v); resetMode(); }} options={areas.map(String)} placeholder="면적(㎡)" disabled={!apt || areas.length === 0} />
       </div>
 
-      {/* Chart + Buttons layout */}
+      {/* Chart + Buttons */}
       {showChart && (
         <>
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', maxWidth: 720 }}>
-            {/* Chart */}
             <div style={{ flex: 1, minWidth: 0 }}>
+
+              {/* Chart */}
               <div style={{ width: '100%', aspectRatio: '2/1', border: '1px solid #ddd' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
@@ -455,40 +504,22 @@ export default function Home() {
                       dataKey="price" type="number"
                       domain={yDomain} ticks={yTicks}
                       tickFormatter={formatYTick}
-                      tick={{ fontSize: 11, fill: '#555' }}
-                      width={56}
+                      tick={{ fontSize: 11, fill: '#555' }} width={56}
                     />
-                    {/* 메인 아파트 */}
-                    <Scatter
-                      data={chartData}
-                      isAnimationActive={false}
-                      shape={makeRenderShape('__main__', '#111', true, abnormalSet, chartDataRef, viewMode !== 'single')}
+                    <ChartLines
+                      mainPoints={chartData}
+                      overlayLines={allOverlayLines}
+                      abnormalSet={abnormalSet}
+                      isOverlayMode={isOverlayMode}
+                      setTooltip={setTooltip}
                     />
-                    {/* 옆단지 오버레이 */}
-                    {viewMode === 'nearby' && overlayChartData.map(o => {
-                      const ref = { current: o.chartPoints };
-                      return (
-                        <Scatter key={o.key} data={o.chartPoints} isAnimationActive={false}
-                          shape={makeRenderShape(o.key, o.color, false, new Set(), ref as React.MutableRefObject<typeof o.chartPoints>)}
-                        />
-                      );
-                    })}
-                    {/* 우리동네 오버레이 */}
-                    {viewMode === 'neighborhood' && dongCheckedData.map(o => {
-                      const ref = { current: o.chartPoints };
-                      return (
-                        <Scatter key={o.aptNm} data={o.chartPoints} isAnimationActive={false}
-                          shape={makeRenderShape(o.aptNm, o.color, false, new Set(), ref as React.MutableRefObject<typeof o.chartPoints>)}
-                        />
-                      );
-                    })}
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Range Slider */}
+              {/* Slider */}
               <div style={{ paddingLeft: 80 }}>
-                <RangeSlider startTs={startTs} endTs={endTs} onChange={handleRangeChange} />
+                <RangeSlider startTs={sliderStart} endTs={sliderEnd} onChange={handleRangeChange} />
               </div>
 
               {/* Trade count */}
@@ -496,40 +527,26 @@ export default function Home() {
                 {chartData.length.toLocaleString()}건 표시 / 전체 {trades.length.toLocaleString()}건
               </div>
 
-              {/* 범례 */}
-              {(viewMode === 'nearby' && overlayChartData.length > 0) && (
+              {/* Legend */}
+              {(legendNearby.length > 0 || legendDong.length > 0) && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, color: '#333', marginBottom: 12, paddingLeft: 4 }}>
                   <span><b style={{ color: '#111' }}>●</b> {apt} ({area}㎡)</span>
-                  {overlayChartData.map(o => (
-                    <span key={o.key}><b style={{ color: o.color }}>●</b> {o.aptNm} ({o.area}㎡)</span>
-                  ))}
-                </div>
-              )}
-              {(viewMode === 'neighborhood' && dongCheckedData.length > 0) && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, color: '#333', marginBottom: 12, paddingLeft: 4 }}>
-                  <span><b style={{ color: '#111' }}>●</b> {apt} ({area}㎡)</span>
-                  {dongCheckedData.map(o => (
-                    <span key={o.aptNm}><b style={{ color: o.color }}>●</b> {o.aptNm}</span>
+                  {[...legendNearby, ...legendDong].map(o => (
+                    <span key={o.key}><b style={{ color: o.color }}>●</b> {o.points.length > 0 ? o.key.split('|')[0] : o.key}</span>
                   ))}
                 </div>
               )}
 
-              {/* 우리동네 체크리스트 */}
+              {/* 우리동네 checklist */}
               {viewMode === 'neighborhood' && dongAptList.length > 0 && (
                 <div style={{ border: '1px solid #eee', padding: '10px 12px', marginBottom: 12, maxHeight: 200, overflowY: 'auto' }}>
                   <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>{dong} 내 아파트 (체크하면 차트에 추가)</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {dongAptList.map(aptNm => (
                       <label key={aptNm} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={checkedApts.has(aptNm)}
-                          onChange={() => toggleDongApt(aptNm)}
-                          disabled={loadingDong.has(aptNm)}
-                        />
+                        <input type="checkbox" checked={checkedApts.has(aptNm)} onChange={() => toggleDongApt(aptNm)} disabled={loadingDong.has(aptNm)} />
                         <span style={{ color: loadingDong.has(aptNm) ? '#aaa' : '#222' }}>
-                          {aptNm}
-                          {loadingDong.has(aptNm) && ' …'}
+                          {aptNm}{loadingDong.has(aptNm) ? ' …' : ''}
                         </span>
                       </label>
                     ))}
@@ -538,29 +555,15 @@ export default function Home() {
               )}
             </div>
 
-            {/* 버튼 패널 */}
+            {/* Buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4, width: 120, flexShrink: 0 }}>
-              <MinBtn
-                label={loadingOverlay ? '로딩중…' : '옆단지 함께보기'}
-                onClick={handleNearby}
-                disabled={!canUseButtons || loadingOverlay}
-                active={viewMode === 'nearby'}
-              />
-              <MinBtn
-                label="우리동네 함께보기"
-                onClick={handleNeighborhood}
-                disabled={!canUseButtons}
-                active={viewMode === 'neighborhood'}
-              />
-              <MinBtn
-                label="돌아가기"
-                onClick={resetMode}
-                disabled={viewMode === 'single'}
-              />
+              <MinBtn label={loadingOverlay ? '로딩중…' : '옆단지 함께보기'} onClick={handleNearby} disabled={!canUseButtons || loadingOverlay} active={viewMode === 'nearby'} />
+              <MinBtn label="우리동네 함께보기" onClick={handleNeighborhood} disabled={!canUseButtons} active={viewMode === 'neighborhood'} />
+              <MinBtn label="돌아가기" onClick={resetMode} disabled={viewMode === 'single'} />
             </div>
           </div>
 
-          {/* Table (항상 메인 아파트만) */}
+          {/* Table */}
           <div style={{ maxWidth: 640, marginTop: 24 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
