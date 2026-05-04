@@ -75,14 +75,14 @@
     padding: 1.25rem 1rem;
   }
 
-  /* Main: 2-col responsive */
+  /* Main: 1-col full width */
   .main-btn-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 8px;
   }
   .main-btn {
     width: 100%;
-    height: 110px;
+    height: 52px;
   }
 
   /* Filters: 2x2 */
