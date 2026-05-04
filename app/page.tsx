@@ -342,8 +342,15 @@ export default function Home() {
     dataRef: React.MutableRefObject<{ ts: number; price: number; floor: string; aptNm: string }[]>,
     prominent = false,  // 오버레이 모드에서 메인 아파트 강조
   ) => {
-    const dotR = isMain ? (prominent ? 3 : 1.8) : 1.4;
-    const lineW = isMain ? (prominent ? 2.5 : 1.5) : 0.8;
+    // 선 스타일
+    const lineColor  = isMain ? (prominent ? '#111' : '#bbb') : color;
+    const lineW      = isMain ? (prominent ? 2.5  : 1.5)  : 0.8;
+    const lineAlpha  = isMain ? (prominent ? 1    : 0.85) : 0.45;
+    // 점 스타일: 오버레이 모드 메인=완전 검은 원, 다른 아파트=선 굵기/색 그대로
+    const dotR       = isMain ? (prominent ? 1.25 : 1.8)  : lineW / 2;
+    const dotColor   = isMain ? '#111' : color;
+    const dotAlpha   = isMain ? (prominent ? 1    : 0.85) : lineAlpha;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (props: any) => {
       const { cx, cy, index } = props as { cx: number; cy: number; index: number };
@@ -354,17 +361,18 @@ export default function Home() {
       posMap.set(aptKey, pos);
 
       const prev = index > 0 ? pos[index - 1] : null;
-      const isAbnormal = isMain && abnSet.has(index);
-      const isAbnormalSeg = isMain && !!prev && (abnSet.has(index - 1) || abnSet.has(index));
+      // 비정상 거래 표시는 싱글 모드 메인에서만
+      const isAbnormal    = !prominent && isMain && abnSet.has(index);
+      const isAbnormalSeg = !prominent && isMain && !!prev && (abnSet.has(index - 1) || abnSet.has(index));
 
       return (
         <g>
           {prev && (
             <line
               x1={prev.cx} y1={prev.cy} x2={cx} y2={cy}
-              stroke={isMain ? '#bbb' : color}
+              stroke={lineColor}
               strokeWidth={lineW}
-              strokeOpacity={isAbnormalSeg ? 0.15 : (isMain ? 0.85 : 0.45)}
+              strokeOpacity={isAbnormalSeg ? 0.15 : lineAlpha}
             />
           )}
           <circle cx={cx} cy={cy} r={7} fill="transparent" style={{ cursor: 'crosshair' }}
@@ -376,8 +384,8 @@ export default function Home() {
             onMouseLeave={() => setTooltip(null)}
           />
           <circle cx={cx} cy={cy} r={dotR}
-            fill={isMain ? (isAbnormal ? '#bbb' : '#111') : color}
-            fillOpacity={isAbnormal ? 0.22 : (isMain ? 0.85 : 0.55)}
+            fill={isAbnormal ? '#bbb' : dotColor}
+            fillOpacity={isAbnormal ? 0.22 : dotAlpha}
             style={{ pointerEvents: 'none' }}
           />
         </g>
