@@ -879,7 +879,8 @@ export default function Home() {
           </div>
 
           {/* Table */}
-          <div style={{ maxWidth: 640, marginTop: 24 }}>
+          <div style={{ display: 'flex', gap: 16, maxWidth: 720, marginTop: 24 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ overflowY: 'auto', maxHeight: 640 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
@@ -903,6 +904,8 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+          </div>
+            <div style={{ width: 120, flexShrink: 0 }} />
           </div>
         </>
       )}
