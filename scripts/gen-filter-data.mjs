@@ -29,25 +29,50 @@ function readCSV(fp) {
   });
 }
 
+// ── 1. 거래 건수 집계 (아파트명|구|동 기준) ──────────────────────────────────
+const tradeCountMap = {};
+const areasMap = {};
+const tradeYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+
+for (const year of tradeYears) {
+  const fp = path.join(ROOT, 'data', `서울_실거래가_${year}.csv`);
+  if (!fs.existsSync(fp)) continue;
+  const rows = readCSV(fp);
+  for (const r of rows) {
+    const key = `${r['아파트명']}|${r['구']}|${r['동']}`;
+    tradeCountMap[key] = (tradeCountMap[key] || 0) + 1;
+    const area = parseFloat(r['전용면적(㎡)']);
+    if (!r['전용면적(㎡)'] || isNaN(area)) continue;
+    if (!areasMap[key]) areasMap[key] = new Set();
+    areasMap[key].add(area);
+  }
+}
+
+// 거래 10건 이하 제외
+const MIN_TRADES = 10;
+const validKeys = new Set(Object.keys(tradeCountMap).filter(k => tradeCountMap[k] > MIN_TRADES));
+
+// ── 2. 좌표 CSV → 구/동/아파트s/coords (유효 키만) ───────────────────────────
 const coordRows = readCSV(path.join(ROOT, 'data', '서울_아파트_목록_좌표포함.csv'))
   .filter(r => r['위도'] && r['경도']);
 
 const guSet = new Set();
 const dongMap = {};
+const aptMap = {};
+const coords = {};
+
 for (const r of coordRows) {
+  const coordKey = `${r['아파트명']}|${r['구']}|${r['동']}`;
+  if (!validKeys.has(coordKey)) continue;   // 거래 10건 이하 제외
+
   guSet.add(r['구']);
   if (!dongMap[r['구']]) dongMap[r['구']] = new Set();
   dongMap[r['구']].add(r['동']);
-}
 
-// 아파트s + coords: 좌표 있는 것만
-const aptMap = {};
-const coords = {};
-for (const r of coordRows) {
-  const key = `${r['구']}|${r['동']}`;
-  if (!aptMap[key]) aptMap[key] = new Set();
-  aptMap[key].add(r['아파트명']);
-  const coordKey = `${r['아파트명']}|${r['구']}|${r['동']}`;
+  const dongKey = `${r['구']}|${r['동']}`;
+  if (!aptMap[dongKey]) aptMap[dongKey] = new Set();
+  aptMap[dongKey].add(r['아파트명']);
+
   coords[coordKey] = { lat: parseFloat(r['위도']), lng: parseFloat(r['경도']) };
 }
 
@@ -60,25 +85,14 @@ const result = {
 
 const outPath = path.join(ROOT, 'lib', 'filter-data.json');
 fs.writeFileSync(outPath, JSON.stringify(result));
-console.log(`✓ filter-data.json 생성: 구 ${result.구s.length}개, 동 ${Object.keys(result.동s).length}개`);
+const aptTotal = Object.values(result.아파트s).reduce((s, a) => s + a.length, 0);
+console.log(`✓ filter-data.json 생성: 구 ${result.구s.length}개, 아파트 ${aptTotal}개 (10건 이하 제외)`);
 
-// areas-index.json: 아파트명|구|동 → 고유 면적 목록
-const areasMap = {};
-const tradeYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
-for (const year of tradeYears) {
-  const fp = path.join(ROOT, 'data', `서울_실거래가_${year}.csv`);
-  if (!fs.existsSync(fp)) continue;
-  const rows = readCSV(fp);
-  for (const r of rows) {
-    const key = `${r['아파트명']}|${r['구']}|${r['동']}`;
-    const area = parseFloat(r['전용면적(㎡)']);
-    if (!r['전용면적(㎡)'] || isNaN(area)) continue;
-    if (!areasMap[key]) areasMap[key] = new Set();
-    areasMap[key].add(area);
-  }
-}
+// ── 3. areas-index.json (유효 키만) ─────────────────────────────────────────
 const areasResult = Object.fromEntries(
-  Object.entries(areasMap).map(([k, s]) => [k, [...s].sort((a, b) => a - b)])
+  Object.entries(areasMap)
+    .filter(([k]) => validKeys.has(k))
+    .map(([k, s]) => [k, [...s].sort((a, b) => a - b)])
 );
 const areasOutPath = path.join(ROOT, 'lib', 'areas-index.json');
 fs.writeFileSync(areasOutPath, JSON.stringify(areasResult));

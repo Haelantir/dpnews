@@ -340,7 +340,10 @@ export default function Home() {
     isMain: boolean,
     abnSet: Set<number>,
     dataRef: React.MutableRefObject<{ ts: number; price: number; floor: string; aptNm: string }[]>,
+    prominent = false,  // 오버레이 모드에서 메인 아파트 강조
   ) => {
+    const dotR = isMain ? (prominent ? 3 : 1.8) : 1.4;
+    const lineW = isMain ? (prominent ? 2.5 : 1.5) : 0.8;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (props: any) => {
       const { cx, cy, index } = props as { cx: number; cy: number; index: number };
@@ -360,11 +363,11 @@ export default function Home() {
             <line
               x1={prev.cx} y1={prev.cy} x2={cx} y2={cy}
               stroke={isMain ? '#bbb' : color}
-              strokeWidth={isMain ? 1.5 : 0.8}
+              strokeWidth={lineW}
               strokeOpacity={isAbnormalSeg ? 0.15 : (isMain ? 0.85 : 0.45)}
             />
           )}
-          <circle cx={cx} cy={cy} r={6} fill="transparent" style={{ cursor: 'crosshair' }}
+          <circle cx={cx} cy={cy} r={7} fill="transparent" style={{ cursor: 'crosshair' }}
             onMouseEnter={(e) => {
               const d = dataRef.current[index];
               if (!d) return;
@@ -372,7 +375,7 @@ export default function Home() {
             }}
             onMouseLeave={() => setTooltip(null)}
           />
-          <circle cx={cx} cy={cy} r={isMain ? 1.8 : 1.4}
+          <circle cx={cx} cy={cy} r={dotR}
             fill={isMain ? (isAbnormal ? '#bbb' : '#111') : color}
             fillOpacity={isAbnormal ? 0.22 : (isMain ? 0.85 : 0.55)}
             style={{ pointerEvents: 'none' }}
@@ -451,7 +454,7 @@ export default function Home() {
                     <Scatter
                       data={chartData}
                       isAnimationActive={false}
-                      shape={makeRenderShape('__main__', '#111', true, abnormalSet, chartDataRef)}
+                      shape={makeRenderShape('__main__', '#111', true, abnormalSet, chartDataRef, viewMode !== 'single')}
                     />
                     {/* 옆단지 오버레이 */}
                     {viewMode === 'nearby' && overlayChartData.map(o => {
