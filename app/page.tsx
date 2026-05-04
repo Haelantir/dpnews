@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  ComposedChart, Scatter, Line, XAxis, YAxis, Tooltip,
+  ScatterChart, Scatter, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer,
 } from 'recharts';
 
@@ -220,10 +220,13 @@ export default function Home() {
   }, []);
 
   // Scatter data
-  const chartData = trades
-    .map(t => ({ ts: new Date(t.date).getTime(), price: t.price, floor: t.floor }))
-    .filter(d => !isNaN(d.ts) && d.ts >= startTs && d.ts <= endTs)
-    .sort((a, b) => a.ts - b.ts);
+  const chartData = useMemo(() =>
+    trades
+      .map(t => ({ ts: new Date(t.date).getTime(), price: t.price, floor: t.floor }))
+      .filter(d => !isNaN(d.ts) && d.ts >= startTs && d.ts <= endTs)
+      .sort((a, b) => a.ts - b.ts),
+    [trades, startTs, endTs],
+  );
 
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
@@ -255,40 +258,48 @@ export default function Home() {
       {showChart && (
         <>
           <div style={{
-            width: '100%', aspectRatio: '1/1', maxWidth: 640,
+            width: '100%', aspectRatio: '2/1', maxWidth: 640,
             border: '1px solid #ddd', marginBottom: 0,
           }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
+              <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis
+                  key={`x-${startTs}-${endTs}`}
                   dataKey="ts"
                   type="number"
                   domain={[startTs, endTs]}
-                  tickFormatter={ts => tsToLabel(ts)}
+                  tickFormatter={ts => tsToLabel(Number(ts))}
                   tick={{ fontSize: 11, fill: '#555' }}
                   tickCount={6}
                   scale="time"
+                  minTickGap={40}
                 />
                 <YAxis
                   dataKey="price"
                   type="number"
                   domain={[yMin, yMax]}
                   tickFormatter={v => {
-                    const 억 = Math.floor(v / 10000);
-                    return 억 > 0 ? `${억}억` : `${(v / 1000).toFixed(0)}천만`;
+                    const 억 = Math.floor(Number(v) / 10000);
+                    return 억 > 0 ? `${억}억` : `${(Number(v) / 1000).toFixed(0)}천만`;
                   }}
                   tick={{ fontSize: 11, fill: '#555' }}
                   width={52}
                 />
-                <Tooltip content={<ChartTooltip />} />
-                <Line
-                  dataKey="price" stroke="#aaa" strokeWidth={1}
-                  dot={false} activeDot={false} legendType="none"
+                <Tooltip
+                  cursor={false}
+                  content={<ChartTooltip />}
+                />
+                <Scatter
+                  data={chartData}
+                  fill="#111"
+                  opacity={0.85}
+                  r={3}
+                  line={{ stroke: '#bbb', strokeWidth: 1 }}
+                  lineType="joint"
                   isAnimationActive={false}
                 />
-                <Scatter dataKey="price" fill="#111" opacity={0.7} r={3} />
-              </ComposedChart>
+              </ScatterChart>
             </ResponsiveContainer>
           </div>
 
