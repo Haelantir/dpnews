@@ -387,20 +387,101 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       mapInst.addControl(new mgl.AttributionControl({ compact: true }), 'bottom-right');
       mapInst.once('load', () => {
         if (cancelled) return;
-        // Keep only subway stations + schools in POI layer; hide housenumbers
-        for (const layer of (mapInst.getStyle().layers as any[])) {
-          if (layer['source-layer'] === 'poi') {
-            try {
-              mapInst.setFilter(layer.id, [
-                'any',
-                ['in', ['get', 'class'], ['literal', ['railway', 'school', 'college', 'university', 'kindergarten']]],
-              ]);
-            } catch (_) { /* layer may not support filter */ }
-          }
-          if (layer['source-layer'] === 'housenumber') {
-            try { mapInst.setLayoutProperty(layer.id, 'visibility', 'none'); } catch (_) {}
+        // ── 도로명 한국어만 ──────────────────────────────────────────────
+        for (const id of ['highway-name-path', 'highway-name-minor', 'highway-name-major']) {
+          if (mapInst.getLayer(id)) {
+            mapInst.setLayoutProperty(id, 'text-field', ['get', 'name']);
           }
         }
+        for (const layer of (mapInst.getStyle().layers as any[])) {
+          if (layer['source-layer'] === 'place') {
+            try { mapInst.setLayoutProperty(layer.id, 'text-field', ['get', 'name']); } catch (_) {}
+          }
+        }
+
+        // ── 지하철 노선: 기존 레이어 컬러화 ─────────────────────────────
+        // OSM colour 속성이 있으면 실제 노선 색, 없으면 보라 fallback
+        if (mapInst.getLayer('railway_transit')) {
+          mapInst.setPaintProperty('railway_transit', 'line-color', [
+            'case', ['has', 'colour'], ['get', 'colour'], '#8b5cf6',
+          ]);
+          mapInst.setPaintProperty('railway_transit', 'line-width', [
+            'interpolate', ['linear'], ['zoom'], 9, 2, 12, 3, 15, 5,
+          ]);
+          mapInst.setPaintProperty('railway_transit', 'line-opacity', 0.85);
+        }
+        if (mapInst.getLayer('railway_transit_dashline')) {
+          mapInst.setLayoutProperty('railway_transit_dashline', 'visibility', 'none');
+        }
+
+        // ── 지하철역 원형 마커 (poi / railway class) ─────────────────────
+        try {
+          mapInst.addLayer({
+            id: 'custom-subway-circle',
+            type: 'circle',
+            source: 'openmaptiles',
+            'source-layer': 'poi',
+            filter: ['==', ['get', 'class'], 'railway'],
+            paint: {
+              'circle-color': '#fff',
+              'circle-stroke-color': '#4f46e5',
+              'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 14, 2],
+              'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 5],
+            },
+            minzoom: 10,
+          });
+        } catch (_) {}
+
+        // ── 지하철역 레이블 ──────────────────────────────────────────────
+        try {
+          mapInst.addLayer({
+            id: 'custom-subway-label',
+            type: 'symbol',
+            source: 'openmaptiles',
+            'source-layer': 'poi',
+            filter: ['==', ['get', 'class'], 'railway'],
+            layout: {
+              'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 11, 9, 15, 12],
+              'text-offset': [0, 1.1],
+              'text-anchor': 'top',
+              'text-max-width': 8,
+            },
+            paint: {
+              'text-color': '#312e81',
+              'text-halo-color': '#fff',
+              'text-halo-width': 1.5,
+            },
+            minzoom: 11,
+          });
+        } catch (_) {}
+
+        // ── 학교 레이블 (사이트 색감: 에메랄드 그린) ─────────────────────
+        try {
+          mapInst.addLayer({
+            id: 'custom-school-label',
+            type: 'symbol',
+            source: 'openmaptiles',
+            'source-layer': 'poi',
+            filter: ['match', ['get', 'class'],
+              ['school', 'college', 'university', 'kindergarten'], true, false],
+            layout: {
+              'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 10,
+              'text-anchor': 'center',
+              'text-max-width': 6,
+            },
+            paint: {
+              'text-color': '#059669',
+              'text-halo-color': '#fff',
+              'text-halo-width': 1.5,
+            },
+            minzoom: 13,
+          });
+        } catch (_) {}
+
         mapRef.current = mapInst;
         placeMarkers(mapInst, aptsRef.current);
       });
