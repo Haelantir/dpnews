@@ -40,11 +40,38 @@ function tsToLabel(ts: number): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Y축: 정확한 억/천만 단위 tick 계산
+function getYTicks(minP: number, maxP: number): number[] {
+  const range = maxP - minP;
+  let step: number;
+  if (range === 0) step = 10000;
+  else if (range < 2000) step = 500;
+  else if (range < 5000) step = 1000;
+  else if (range < 15000) step = 2000;
+  else if (range < 50000) step = 5000;
+  else if (range < 150000) step = 10000;
+  else step = 50000;
+
+  const first = Math.floor(minP / step) * step;
+  const last = Math.ceil(maxP / step) * step;
+  const ticks: number[] = [];
+  for (let t = first; t <= last; t += step) ticks.push(t);
+  return ticks;
+}
+
+function formatYTick(v: number): string {
+  const num = Number(v);
+  const 억 = Math.floor(num / 10000);
+  const 나머지 = num % 10000;
+  if (억 === 0) return 나머지 % 1000 === 0 ? `${나머지 / 1000}천만` : `${나머지}만`;
+  if (나머지 === 0) return `${억}억`;
+  if (나머지 % 1000 === 0) return `${억}억${나머지 / 1000}천만`;
+  return `${억}억${나머지.toLocaleString()}만`;
+}
+
 // ── Range Slider ─────────────────────────────────────────────────────────────
 
-function RangeSlider({
-  startTs, endTs, onChange,
-}: {
+function RangeSlider({ startTs, endTs, onChange }: {
   startTs: number; endTs: number;
   onChange: (start: number, end: number) => void;
 }) {
@@ -64,11 +91,8 @@ function RangeSlider({
     if (!dragging.current) return;
     const r = posToRatio(e.clientX);
     const ts = ratioToTs(r);
-    if (dragging.current === 'left') {
-      onChange(Math.min(ts, endTs - 86400000), endTs);
-    } else {
-      onChange(startTs, Math.max(ts, startTs + 86400000));
-    }
+    if (dragging.current === 'left') onChange(Math.min(ts, endTs - 86400000), endTs);
+    else onChange(startTs, Math.max(ts, startTs + 86400000));
   }, [startTs, endTs, onChange, posToRatio]);
 
   const onMouseUp = useCallback(() => { dragging.current = null; }, []);
@@ -87,35 +111,10 @@ function RangeSlider({
 
   return (
     <div style={{ padding: '8px 0 4px', userSelect: 'none' }}>
-      <div
-        ref={trackRef}
-        style={{ position: 'relative', height: 4, background: '#ddd', margin: '12px 0' }}
-      >
-        {/* active range */}
-        <div style={{
-          position: 'absolute', top: 0, height: '100%', background: '#333',
-          left: `${leftPct}%`, width: `${rightPct - leftPct}%`,
-        }} />
-        {/* left thumb */}
-        <div
-          onMouseDown={() => { dragging.current = 'left'; }}
-          style={{
-            position: 'absolute', top: '50%', left: `${leftPct}%`,
-            transform: 'translate(-50%, -50%)',
-            width: 14, height: 14, background: '#111', cursor: 'ew-resize',
-            border: '2px solid #fff', boxShadow: '0 0 0 1px #111',
-          }}
-        />
-        {/* right thumb */}
-        <div
-          onMouseDown={() => { dragging.current = 'right'; }}
-          style={{
-            position: 'absolute', top: '50%', left: `${rightPct}%`,
-            transform: 'translate(-50%, -50%)',
-            width: 14, height: 14, background: '#111', cursor: 'ew-resize',
-            border: '2px solid #fff', boxShadow: '0 0 0 1px #111',
-          }}
-        />
+      <div ref={trackRef} style={{ position: 'relative', height: 4, background: '#ddd', margin: '12px 0' }}>
+        <div style={{ position: 'absolute', top: 0, height: '100%', background: '#333', left: `${leftPct}%`, width: `${rightPct - leftPct}%` }} />
+        <div onMouseDown={() => { dragging.current = 'left'; }} style={{ position: 'absolute', top: '50%', left: `${leftPct}%`, transform: 'translate(-50%,-50%)', width: 14, height: 14, background: '#111', cursor: 'ew-resize', border: '2px solid #fff', boxShadow: '0 0 0 1px #111' }} />
+        <div onMouseDown={() => { dragging.current = 'right'; }} style={{ position: 'absolute', top: '50%', left: `${rightPct}%`, transform: 'translate(-50%,-50%)', width: 14, height: 14, background: '#111', cursor: 'ew-resize', border: '2px solid #fff', boxShadow: '0 0 0 1px #111' }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
         <span>{tsToLabel(startTs)}</span>
@@ -127,14 +126,14 @@ function RangeSlider({
 
 // ── Custom Tooltip ───────────────────────────────────────────────────────────
 
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: { payload: { ts: number; price: number; floor: string } }[] }) {
+function ChartTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: { payload: { ts: number; price: number; floor: string } }[];
+}) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
-    <div style={{
-      background: '#fff', border: '1px solid #333',
-      padding: '6px 10px', fontSize: 12, lineHeight: 1.6,
-    }}>
+    <div style={{ background: '#fff', border: '1px solid #333', padding: '6px 10px', fontSize: 12, lineHeight: 1.6 }}>
       <div>{new Date(d.ts).toLocaleDateString('ko-KR')}</div>
       <div>{formatPrice(d.price)}</div>
       <div>{d.floor}층</div>
@@ -144,25 +143,13 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
 
 // ── Dropdown ─────────────────────────────────────────────────────────────────
 
-function Select({
-  value, onChange, options, placeholder, disabled,
-}: {
+function Select({ value, onChange, options, placeholder, disabled }: {
   value: string; onChange: (v: string) => void;
   options: string[]; placeholder: string; disabled: boolean;
 }) {
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={disabled}
-      style={{
-        flex: 1, height: 36, padding: '0 8px',
-        border: '1px solid #333', background: disabled ? '#f5f5f5' : '#fff',
-        color: disabled ? '#aaa' : '#111',
-        fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-        appearance: 'auto',
-      }}
-    >
+    <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+      style={{ flex: 1, height: 36, padding: '0 8px', border: '1px solid #333', background: disabled ? '#f5f5f5' : '#fff', color: disabled ? '#aaa' : '#111', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer', appearance: 'auto' }}>
       <option value="">{placeholder}</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
@@ -180,46 +167,33 @@ export default function Home() {
   const [areas, setAreas] = useState<number[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
-
   const [startTs, setStartTs] = useState(MIN_TS);
   const [endTs, setEndTs] = useState(MAX_TS);
 
-  // Load filter data on mount
   useEffect(() => {
     fetch('/api/filter-data').then(r => r.json()).then(setFilterData);
   }, []);
 
-  // Load areas when apt changes
   useEffect(() => {
     if (!gu || !dong || !apt) { setAreas([]); setArea(''); setTrades([]); return; }
     fetch(`/api/areas?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}`)
       .then(r => r.json()).then((data: number[]) => { setAreas(data); setArea(''); setTrades([]); });
   }, [gu, dong, apt]);
 
-  // Load trades when area changes
   useEffect(() => {
     if (!gu || !dong || !apt || !area) { setTrades([]); return; }
     setLoading(true);
     fetch(`/api/trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`)
       .then(r => r.json())
-      .then((data: Trade[]) => {
-        setTrades(data);
-        setStartTs(MIN_TS);
-        setEndTs(MAX_TS);
-      })
+      .then((data: Trade[]) => { setTrades(data); setStartTs(MIN_TS); setEndTs(MAX_TS); })
       .finally(() => setLoading(false));
   }, [gu, dong, apt, area]);
 
-  // Reset downstream on selection change
   const handleGuChange = (v: string) => { setGu(v); setDong(''); setApt(''); setArea(''); setTrades([]); };
   const handleDongChange = (v: string) => { setDong(v); setApt(''); setArea(''); setTrades([]); };
   const handleAptChange = (v: string) => { setApt(v); setArea(''); setTrades([]); };
+  const handleRangeChange = useCallback((s: number, e: number) => { setStartTs(s); setEndTs(e); }, []);
 
-  const handleRangeChange = useCallback((s: number, e: number) => {
-    setStartTs(s); setEndTs(e);
-  }, []);
-
-  // Scatter data
   const chartData = useMemo(() =>
     trades
       .map(t => ({ ts: new Date(t.date).getTime(), price: t.price, floor: t.floor }))
@@ -228,14 +202,63 @@ export default function Home() {
     [trades, startTs, endTs],
   );
 
+  // 비정상 거래 탐지: 앞뒤 거래 대비 20% 이상 이격된 중간값
+  const abnormalSet = useMemo(() => {
+    const s = new Set<number>();
+    for (let i = 1; i < chartData.length - 1; i++) {
+      const prev = chartData[i - 1].price;
+      const curr = chartData[i].price;
+      const next = chartData[i + 1].price;
+      if (Math.abs(curr - prev) / prev >= 0.2 && Math.abs(curr - next) / next >= 0.2) {
+        s.add(i);
+      }
+    }
+    return s;
+  }, [chartData]);
+
+  // Y축 tick: 정확한 억/천만 경계값
+  const yTicks = useMemo(() => {
+    if (!chartData.length) return [0, 100000];
+    const prices = chartData.map(d => d.price);
+    return getYTicks(Math.min(...prices), Math.max(...prices));
+  }, [chartData]);
+
+  // 점 위치 캐시 (같은 render 내에서 이전 점 좌표를 선 그리기에 활용)
+  const dotPos = useRef<{ cx: number; cy: number }[]>([]);
+
+  // shape: 선(이전 점→현재 점) + 점을 한 번에 렌더
+  const renderShape = useCallback((props: {
+    cx: number; cy: number; index: number;
+  }) => {
+    const { cx, cy, index } = props;
+    if (index === 0) dotPos.current = [];
+    dotPos.current[index] = { cx, cy };
+
+    const isAbnormal = abnormalSet.has(index);
+    const prev = index > 0 ? dotPos.current[index - 1] : null;
+    const isAbnormalSeg = !!prev && (abnormalSet.has(index - 1) || abnormalSet.has(index));
+
+    return (
+      <g>
+        {prev && (
+          <line
+            x1={prev.cx} y1={prev.cy} x2={cx} y2={cy}
+            stroke="#bbb" strokeWidth={1}
+            strokeOpacity={isAbnormalSeg ? 0.18 : 0.85}
+          />
+        )}
+        <circle cx={cx} cy={cy} r={1.8}
+          fill={isAbnormal ? '#bbb' : '#111'}
+          fillOpacity={isAbnormal ? 0.22 : 0.85}
+        />
+      </g>
+    );
+  }, [abnormalSet]);
+
   const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
   const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
-  const showChart = area && trades.length > 0;
-
-  // Y axis domain
-  const prices = chartData.map(d => d.price);
-  const yMin = prices.length ? Math.floor(Math.min(...prices) * 0.95) : 0;
-  const yMax = prices.length ? Math.ceil(Math.max(...prices) * 1.05) : 100000;
+  const showChart = !!area && trades.length > 0;
+  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -245,22 +268,13 @@ export default function Home() {
         <Select value={gu} onChange={handleGuChange} options={filterData?.구s ?? []} placeholder="구 선택" disabled={!filterData} />
         <Select value={dong} onChange={handleDongChange} options={dongs} placeholder="동 선택" disabled={!gu} />
         <Select value={apt} onChange={handleAptChange} options={apts} placeholder="아파트 선택" disabled={!dong} />
-        <Select
-          value={area}
-          onChange={setArea}
-          options={areas.map(String)}
-          placeholder="면적(㎡)"
-          disabled={!apt || areas.length === 0}
-        />
+        <Select value={area} onChange={setArea} options={areas.map(String)} placeholder="면적(㎡)" disabled={!apt || areas.length === 0} />
       </div>
 
       {/* Chart */}
       {showChart && (
         <>
-          <div style={{
-            width: '100%', aspectRatio: '2/1', maxWidth: 640,
-            border: '1px solid #ddd', marginBottom: 0,
-          }}>
+          <div style={{ width: '100%', aspectRatio: '2/1', maxWidth: 640, border: '1px solid #ddd' }}>
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -278,33 +292,24 @@ export default function Home() {
                 <YAxis
                   dataKey="price"
                   type="number"
-                  domain={[yMin, yMax]}
-                  tickFormatter={v => {
-                    const 억 = Math.floor(Number(v) / 10000);
-                    return 억 > 0 ? `${억}억` : `${(Number(v) / 1000).toFixed(0)}천만`;
-                  }}
+                  domain={yDomain}
+                  ticks={yTicks}
+                  tickFormatter={formatYTick}
                   tick={{ fontSize: 11, fill: '#555' }}
-                  width={52}
+                  width={56}
                 />
-                <Tooltip
-                  cursor={false}
-                  content={<ChartTooltip />}
-                />
+                <Tooltip cursor={false} content={<ChartTooltip />} />
                 <Scatter
                   data={chartData}
-                  fill="#111"
-                  opacity={0.85}
-                  r={3}
-                  line={{ stroke: '#bbb', strokeWidth: 1 }}
-                  lineType="joint"
                   isAnimationActive={false}
+                  shape={(props: any) => renderShape(props)}
                 />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
 
           {/* Range Slider */}
-          <div style={{ maxWidth: 640, paddingLeft: 76 }}>
+          <div style={{ maxWidth: 640, paddingLeft: 80 }}>
             <RangeSlider startTs={startTs} endTs={endTs} onChange={handleRangeChange} />
           </div>
 
@@ -325,18 +330,13 @@ export default function Home() {
               </thead>
               <tbody>
                 {trades
-                  .filter(t => {
-                    const ts = new Date(t.date).getTime();
-                    return ts >= startTs && ts <= endTs;
-                  })
+                  .filter(t => { const ts = new Date(t.date).getTime(); return ts >= startTs && ts <= endTs; })
                   .map((t, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{t.date}</td>
                       <td style={{ padding: '6px 8px' }}>{t.aptNm}</td>
                       <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{t.floor}층</td>
-                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatPrice(t.price)}
-                      </td>
+                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(t.price)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -345,9 +345,7 @@ export default function Home() {
         </>
       )}
 
-      {loading && (
-        <div style={{ color: '#888', fontSize: 13 }}>불러오는 중...</div>
-      )}
+      {loading && <div style={{ color: '#888', fontSize: 13 }}>불러오는 중...</div>}
     </div>
   );
 }
