@@ -14,7 +14,26 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(git pull *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(pip install *)",
+      "Bash(python data/collect.py)",
+      "Bash(python3 *)",
+      "Bash(curl -s http://localhost:3000/api/filter-data)",
+      "Bash(curl -s \"http://localhost:3000/api/areas?gu=강남구&dong=개포동&apt=개포2차현대아파트\\(220\\)\")",
+      "Bash(curl -sv http://localhost:3000/api/filter-data)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(curl -s \"http://localhost:3000/api/areas?gu=%EA%B0%95%EB%82%A8%EA%B5%AC&dong=%EA%B0%9C%ED%8F%AC%EB%8F%99&apt=%EA%B0%9C%ED%8F%AC%EB%9E%98%EB%AF%B8%EC%95%88%ED%8F%AC%EB%A0%88%EC%8A%A4%ED%8A%B8\")",
+      "Bash(curl -s \"http://localhost:3000/api/areas?gu=강남구&dong=개포동&apt=개포래미안포레스트\")",
+      "Bash(curl -s \"http://localhost:3000/api/trades?gu=강남구&dong=개포동&apt=개포래미안포레스트&area=84\")",
+      "Bash(curl -sv \"http://localhost:3000/api/trades?gu=강남구&dong=개포동&apt=개포래미안포레스트&area=84\")",
+      "Bash(git commit -m 'config: include data files in Vercel serverless bundle *)",
+      "Bash(node -e \"require\\('recharts'\\)\")",
+      "Bash(node *)",
+      "Bash(git commit -m 'data: add apartment list and coordinate CSV files *)",
+      "Bash(git commit -m 'fix: price format \\(18억 4500만\\), add line to scatter chart *)",
+      "Bash(git commit -m 'fix: chart Y-axis alignment, lag, tooltip, half height *)",
+      "Bash(git commit -m 'fix: Y-axis alignment, abnormal trade detection, dot radius 60% *)",
+      "Bash(git commit *)"
     ]
   }
 }

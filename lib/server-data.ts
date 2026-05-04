@@ -137,3 +137,11 @@ export function getTrades(gu: string, dong: string, apt: string, area: number): 
     .filter(t => t.area === area)
     .sort((a, b) => b.date.localeCompare(a.date));
 }
+
+export function getTradesRange(gu: string, dong: string, apt: string, minArea: number, maxArea: number): TradeRecord[] {
+  const key = `${apt}|${gu}|${dong}`;
+  const trades = loadTrades().get(key) ?? [];
+  return trades
+    .filter(t => t.area >= minArea && t.area <= maxArea)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}

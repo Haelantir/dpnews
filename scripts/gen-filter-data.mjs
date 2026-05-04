@@ -40,18 +40,22 @@ for (const r of coordRows) {
   dongMap[r['구']].add(r['동']);
 }
 
-const aptRows = readCSV(path.join(ROOT, 'data', '서울_아파트_목록.csv'));
+// 아파트s + coords: 좌표 있는 것만
 const aptMap = {};
-for (const r of aptRows) {
+const coords = {};
+for (const r of coordRows) {
   const key = `${r['구']}|${r['동']}`;
   if (!aptMap[key]) aptMap[key] = new Set();
   aptMap[key].add(r['아파트명']);
+  const coordKey = `${r['아파트명']}|${r['구']}|${r['동']}`;
+  coords[coordKey] = { lat: parseFloat(r['위도']), lng: parseFloat(r['경도']) };
 }
 
 const result = {
   구s: [...guSet].sort((a, b) => a.localeCompare(b, 'ko')),
   동s: Object.fromEntries(Object.entries(dongMap).map(([g, s]) => [g, [...s].sort((a,b)=>a.localeCompare(b,'ko'))])),
   아파트s: Object.fromEntries(Object.entries(aptMap).map(([k, s]) => [k, [...s].sort((a,b)=>a.localeCompare(b,'ko'))])),
+  coords,
 };
 
 const outPath = path.join(ROOT, 'lib', 'filter-data.json');
