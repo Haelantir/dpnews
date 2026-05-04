@@ -309,12 +309,78 @@ function MinBtn({ label, onClick, disabled, active }: {
   );
 }
 
+// ── ApartmentMap helpers ──────────────────────────────────────────────────────
+
+const ST_R = 6;   // station circle radius
+const ST_PAD = 2; // padding around circle in SVG
+
+function buildStationMarkerEl(colors: string[], name: string): HTMLElement {
+  const size = (ST_R + ST_PAD) * 2;
+  const c = ST_R + ST_PAD;
+  const ns = 'http://www.w3.org/2000/svg';
+
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+
+  if (colors.length === 1) {
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', String(c));
+    circle.setAttribute('cy', String(c));
+    circle.setAttribute('r', String(ST_R));
+    circle.setAttribute('fill', colors[0]);
+    circle.setAttribute('stroke', '#fff');
+    circle.setAttribute('stroke-width', '1.5');
+    svg.appendChild(circle);
+  } else {
+    const n = colors.length;
+    for (let i = 0; i < n; i++) {
+      const a0 = ((i / n) * 360 - 90) * (Math.PI / 180);
+      const a1 = (((i + 1) / n) * 360 - 90) * (Math.PI / 180);
+      const x0 = (c + ST_R * Math.cos(a0)).toFixed(3);
+      const y0 = (c + ST_R * Math.sin(a0)).toFixed(3);
+      const x1 = (c + ST_R * Math.cos(a1)).toFixed(3);
+      const y1 = (c + ST_R * Math.sin(a1)).toFixed(3);
+      const large = 1 / n > 0.5 ? 1 : 0;
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', `M${c},${c} L${x0},${y0} A${ST_R},${ST_R} 0 ${large},1 ${x1},${y1} Z`);
+      path.setAttribute('fill', colors[i]);
+      path.setAttribute('stroke', '#fff');
+      path.setAttribute('stroke-width', '0.5');
+      svg.appendChild(path);
+    }
+    const ring = document.createElementNS(ns, 'circle');
+    ring.setAttribute('cx', String(c));
+    ring.setAttribute('cy', String(c));
+    ring.setAttribute('r', String(ST_R));
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', '#fff');
+    ring.setAttribute('stroke-width', '1.5');
+    svg.appendChild(ring);
+  }
+
+  const label = document.createElement('div');
+  label.className = 'st-label';
+  label.textContent = name;
+  label.style.cssText =
+    'font-size:9px;font-family:system-ui,-apple-system,sans-serif;color:#1a1a2e;' +
+    'white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;' +
+    'line-height:1.2;text-align:center;margin-top:1px;';
+
+  const outer = document.createElement('div');
+  outer.style.cssText = 'pointer-events:none;display:flex;flex-direction:column;align-items:center;';
+  outer.appendChild(svg);
+  outer.appendChild(label);
+  return outer;
+}
+
 // ── ApartmentMap ─────────────────────────────────────────────────────────────
 
 const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const stationElsRef = useRef<HTMLElement[]>([]);
   const aptsRef = useRef<MapApt[]>(apts);
   aptsRef.current = apts;
 
@@ -387,11 +453,10 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       mapInst.addControl(new mgl.AttributionControl({ compact: true }), 'bottom-right');
       mapInst.once('load', () => {
         if (cancelled) return;
-        // ── 도로명 한국어만 ──────────────────────────────────────────────
+
+        // ── 도로명 한국어만 ───────────────────────────────────────────────
         for (const id of ['highway-name-path', 'highway-name-minor', 'highway-name-major']) {
-          if (mapInst.getLayer(id)) {
-            mapInst.setLayoutProperty(id, 'text-field', ['get', 'name']);
-          }
+          if (mapInst.getLayer(id)) mapInst.setLayoutProperty(id, 'text-field', ['get', 'name']);
         }
         for (const layer of (mapInst.getStyle().layers as any[])) {
           if (layer['source-layer'] === 'place') {
@@ -399,65 +464,14 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
           }
         }
 
-        // ── 지하철 노선: 기존 레이어 컬러화 ─────────────────────────────
-        // OSM colour 속성이 있으면 실제 노선 색, 없으면 보라 fallback
-        if (mapInst.getLayer('railway_transit')) {
-          mapInst.setPaintProperty('railway_transit', 'line-color', [
-            'case', ['has', 'colour'], ['get', 'colour'], '#8b5cf6',
-          ]);
-          mapInst.setPaintProperty('railway_transit', 'line-width', [
-            'interpolate', ['linear'], ['zoom'], 9, 2, 12, 3, 15, 5,
-          ]);
-          mapInst.setPaintProperty('railway_transit', 'line-opacity', 0.85);
-        }
-        if (mapInst.getLayer('railway_transit_dashline')) {
-          mapInst.setLayoutProperty('railway_transit_dashline', 'visibility', 'none');
+        // ── 지하철 노선 숨기기 ────────────────────────────────────────────
+        for (const id of ['railway_transit', 'railway_transit_dashline']) {
+          if (mapInst.getLayer(id)) {
+            try { mapInst.setLayoutProperty(id, 'visibility', 'none'); } catch (_) {}
+          }
         }
 
-        // ── 지하철역 원형 마커 (poi / railway class) ─────────────────────
-        try {
-          mapInst.addLayer({
-            id: 'custom-subway-circle',
-            type: 'circle',
-            source: 'openmaptiles',
-            'source-layer': 'poi',
-            filter: ['==', ['get', 'class'], 'railway'],
-            paint: {
-              'circle-color': '#fff',
-              'circle-stroke-color': '#4f46e5',
-              'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 14, 2],
-              'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 5],
-            },
-            minzoom: 10,
-          });
-        } catch (_) {}
-
-        // ── 지하철역 레이블 ──────────────────────────────────────────────
-        try {
-          mapInst.addLayer({
-            id: 'custom-subway-label',
-            type: 'symbol',
-            source: 'openmaptiles',
-            'source-layer': 'poi',
-            filter: ['==', ['get', 'class'], 'railway'],
-            layout: {
-              'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']],
-              'text-font': ['Noto Sans Regular'],
-              'text-size': ['interpolate', ['linear'], ['zoom'], 11, 9, 15, 12],
-              'text-offset': [0, 1.1],
-              'text-anchor': 'top',
-              'text-max-width': 8,
-            },
-            paint: {
-              'text-color': '#312e81',
-              'text-halo-color': '#fff',
-              'text-halo-width': 1.5,
-            },
-            minzoom: 11,
-          });
-        } catch (_) {}
-
-        // ── 학교 레이블 (사이트 색감: 에메랄드 그린) ─────────────────────
+        // ── 학교 레이블 ───────────────────────────────────────────────────
         try {
           mapInst.addLayer({
             id: 'custom-school-label',
@@ -483,6 +497,37 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
         } catch (_) {}
 
         mapRef.current = mapInst;
+
+        // ── 지하철역 마커 (JSON 데이터) ───────────────────────────────────
+        const updateStVis = (zoom: number) => {
+          const show = zoom >= 10;
+          const showLbl = zoom >= 12;
+          for (const el of stationElsRef.current) {
+            el.style.display = show ? '' : 'none';
+            const lbl = el.querySelector('.st-label') as HTMLElement | null;
+            if (lbl) lbl.style.display = showLbl ? '' : 'none';
+          }
+        };
+
+        fetch('/api/stations')
+          .then(r => r.json())
+          .then((stations: { name: string; lat: number; lng: number; colors: string[] }[]) => {
+            if (cancelled) return;
+            import('maplibre-gl').then(mgl2 => {
+              for (const s of stations) {
+                const el = buildStationMarkerEl(s.colors, s.name);
+                new mgl2.Marker({ element: el, anchor: 'top', offset: [0, -(ST_R + ST_PAD)] })
+                  .setLngLat([s.lng, s.lat])
+                  .addTo(mapInst);
+                stationElsRef.current.push(el);
+              }
+              updateStVis(mapInst.getZoom());
+            });
+          })
+          .catch(() => {});
+
+        mapInst.on('zoom', () => updateStVis(mapInst.getZoom()));
+
         placeMarkers(mapInst, aptsRef.current);
       });
     })();
@@ -491,6 +536,7 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       cancelled = true;
       mapRef.current = null;
       markersRef.current = [];
+      stationElsRef.current = [];
       mapInst?.remove();
     };
   }, [placeMarkers]);
