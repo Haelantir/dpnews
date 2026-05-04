@@ -1,5 +1,5 @@
-import { getFilterData } from '@/lib/server-data';
+import filterData from '@/lib/filter-data.json';
 
 export async function GET() {
-  return Response.json(getFilterData());
+  return Response.json(filterData);
 }
