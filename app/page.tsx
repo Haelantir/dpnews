@@ -277,14 +277,12 @@ export default function Home() {
               <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis
-                  key={`x-${startTs}-${endTs}`}
                   dataKey="ts"
                   type="number"
                   domain={[startTs, endTs]}
                   tickFormatter={ts => tsToLabel(Number(ts))}
                   tick={{ fontSize: 11, fill: '#555' }}
                   tickCount={6}
-                  scale="time"
                   minTickGap={40}
                 />
                 <YAxis
