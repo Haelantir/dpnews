@@ -381,6 +381,7 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const stationElsRef = useRef<HTMLElement[]>([]);
+  const stationLblsRef = useRef<HTMLElement[]>([]);
   const aptsRef = useRef<MapApt[]>(apts);
   aptsRef.current = apts;
 
@@ -499,14 +500,12 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
         mapRef.current = mapInst;
 
         // ── 지하철역 마커 (JSON 데이터) ───────────────────────────────────
+        // 레이블 참조를 미리 캐싱해 zoom 핸들러에서 querySelector 호출 제거
         const updateStVis = (zoom: number) => {
           const show = zoom >= 10;
           const showLbl = zoom >= 12;
-          for (const el of stationElsRef.current) {
-            el.style.display = show ? '' : 'none';
-            const lbl = el.querySelector('.st-label') as HTMLElement | null;
-            if (lbl) lbl.style.display = showLbl ? '' : 'none';
-          }
+          for (const el of stationElsRef.current) el.style.display = show ? '' : 'none';
+          for (const lbl of stationLblsRef.current) lbl.style.display = showLbl ? '' : 'none';
         };
 
         fetch('/api/stations')
@@ -516,6 +515,8 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
             import('maplibre-gl').then(mgl2 => {
               for (const s of stations) {
                 const el = buildStationMarkerEl(s.colors, s.name);
+                const lbl = el.querySelector('.st-label') as HTMLElement | null;
+                if (lbl) stationLblsRef.current.push(lbl);
                 new mgl2.Marker({ element: el, anchor: 'top', offset: [0, -(ST_R + ST_PAD)] })
                   .setLngLat([s.lng, s.lat])
                   .addTo(mapInst);
@@ -537,6 +538,7 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       mapRef.current = null;
       markersRef.current = [];
       stationElsRef.current = [];
+      stationLblsRef.current = [];
       mapInst?.remove();
     };
   }, [placeMarkers]);
