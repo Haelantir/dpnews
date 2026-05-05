@@ -15,7 +15,7 @@ interface FilterData {
   coords: Record<string, { lat: number; lng: number }>;
 }
 interface Trade { date: string; area: number; price: number; floor: string; aptNm: string; }
-interface NewHigh { aptNm: string; gu: string; dong: string; area: number; date: string; price: number; floor: string; }
+interface NewHigh { aptNm: string; gu: string; dong: string; area: number; date: string; price: number; floor: string; prevPrice: number; }
 interface ChartPoint { ts: number; price: number; floor: string; aptNm: string; }
 interface OverlayLine { key: string; color: string; points: ChartPoint[]; label: string; }
 interface OverlayApt {
@@ -348,50 +348,50 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
   const markersRef = useRef<any[]>([]);
   const stationElsRef = useRef<HTMLElement[]>([]);
   const stationLblsRef = useRef<HTMLElement[]>([]);
-  const aptsRef = useRef<MapApt[]>(apts);
-  aptsRef.current = apts;
+  const mglRef = useRef<any>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   const placeMarkers = useCallback((mapInst: any, data: MapApt[]) => {
-    import('maplibre-gl').then(mgl => {
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-      if (!data.length) return;
-      const bounds = new mgl.LngLatBounds();
-      for (const apt of data) {
-        const outer = document.createElement('div');
-        outer.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:none;';
-        const box = document.createElement('div');
-        const isMain = apt.color === '#111';
-        box.style.cssText =
-          `background:#fff;border:${isMain ? '2px' : '1.5px'} solid ${apt.color};` +
-          'border-radius:2px;padding:3px 7px;white-space:nowrap;' +
-          'font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.15);';
-        const nm = document.createElement('div');
-        nm.style.cssText = `font-size:11px;font-weight:700;color:${isMain ? '#111' : apt.color};line-height:1.45;`;
-        nm.textContent = `${apt.aptNm} ${apt.area}㎡`;
-        const pr = document.createElement('div');
-        pr.style.cssText = 'font-size:10px;color:#555;line-height:1.45;';
-        const [, mm, dd] = apt.latestDate.split('-');
-        pr.textContent = `${Number(mm)}/${Number(dd)} ${formatPrice(apt.latestPrice)}`;
-        const tip = document.createElement('div');
-        tip.style.cssText =
-          'width:0;height:0;border-left:5px solid transparent;' +
-          `border-right:5px solid transparent;border-top:6px solid ${apt.color};`;
-        box.append(nm, pr);
-        outer.append(box, tip);
-        markersRef.current.push(
-          new mgl.Marker({ element: outer, anchor: 'bottom' })
-            .setLngLat([apt.lng, apt.lat])
-            .addTo(mapInst),
-        );
-        bounds.extend([apt.lng, apt.lat]);
-      }
-      if (data.length === 1) {
-        mapInst.flyTo({ center: [data[0].lng, data[0].lat], zoom: 15, duration: 700 });
-      } else {
-        mapInst.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 700 });
-      }
-    });
+    const mgl = mglRef.current;
+    if (!mgl) return;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    if (!data.length) return;
+    const bounds = new mgl.LngLatBounds();
+    for (const apt of data) {
+      const outer = document.createElement('div');
+      outer.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:none;';
+      const box = document.createElement('div');
+      const isMain = apt.color === '#111';
+      box.style.cssText =
+        `background:#fff;border:${isMain ? '2px' : '1.5px'} solid ${apt.color};` +
+        'border-radius:2px;padding:3px 7px;white-space:nowrap;' +
+        'font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.15);';
+      const nm = document.createElement('div');
+      nm.style.cssText = `font-size:11px;font-weight:700;color:${isMain ? '#111' : apt.color};line-height:1.45;`;
+      nm.textContent = `${apt.aptNm} ${apt.area}㎡`;
+      const pr = document.createElement('div');
+      pr.style.cssText = 'font-size:10px;color:#555;line-height:1.45;';
+      const [, mm, dd] = apt.latestDate.split('-');
+      pr.textContent = `${Number(mm)}/${Number(dd)} ${formatPrice(apt.latestPrice)}`;
+      const tip = document.createElement('div');
+      tip.style.cssText =
+        'width:0;height:0;border-left:5px solid transparent;' +
+        `border-right:5px solid transparent;border-top:6px solid ${apt.color};`;
+      box.append(nm, pr);
+      outer.append(box, tip);
+      markersRef.current.push(
+        new mgl.Marker({ element: outer, anchor: 'bottom' })
+          .setLngLat([apt.lng, apt.lat])
+          .addTo(mapInst),
+      );
+      bounds.extend([apt.lng, apt.lat]);
+    }
+    if (data.length === 1) {
+      mapInst.flyTo({ center: [data[0].lng, data[0].lat], zoom: 15, duration: 700 });
+    } else {
+      mapInst.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 700 });
+    }
   }, []);
 
   useEffect(() => {
@@ -400,6 +400,7 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
     let mapInst: any = null;
     (async () => {
       const mgl = await import('maplibre-gl');
+      mglRef.current = mgl;
       if (cancelled || !containerRef.current) return;
       mapInst = new mgl.Map({
         container: containerRef.current,
@@ -450,27 +451,28 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
           .then(r => r.json())
           .then((stations: { name: string; lat: number; lng: number; colors: string[] }[]) => {
             if (cancelled) return;
-            import('maplibre-gl').then(mgl2 => {
-              for (const s of stations) {
-                const el = buildStationMarkerEl(s.colors, s.name);
-                const lbl = el.querySelector('.st-label') as HTMLElement | null;
-                if (lbl) stationLblsRef.current.push(lbl);
-                new mgl2.Marker({ element: el, anchor: 'top', offset: [0, -(ST_R + ST_PAD)] })
-                  .setLngLat([s.lng, s.lat])
-                  .addTo(mapInst);
-                stationElsRef.current.push(el);
-              }
-              updateStVis(mapInst.getZoom());
-            });
+            const mgl2 = mglRef.current;
+            if (!mgl2) return;
+            for (const s of stations) {
+              const el = buildStationMarkerEl(s.colors, s.name);
+              const lbl = el.querySelector('.st-label') as HTMLElement | null;
+              if (lbl) stationLblsRef.current.push(lbl);
+              new mgl2.Marker({ element: el, anchor: 'top', offset: [0, -(ST_R + ST_PAD)] })
+                .setLngLat([s.lng, s.lat])
+                .addTo(mapInst);
+              stationElsRef.current.push(el);
+            }
+            updateStVis(mapInst.getZoom());
           })
           .catch(() => {});
         mapInst.on('zoom', () => updateStVis(mapInst.getZoom()));
-        placeMarkers(mapInst, aptsRef.current);
+        setMapReady(true);
       });
     })();
     return () => {
       cancelled = true;
       mapRef.current = null;
+      mglRef.current = null;
       markersRef.current = [];
       stationElsRef.current = [];
       stationLblsRef.current = [];
@@ -479,11 +481,9 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
   }, [placeMarkers]);
 
   useEffect(() => {
-    const m = mapRef.current;
-    if (!m) return;
-    if (m.loaded()) placeMarkers(m, apts);
-    else m.once('load', () => placeMarkers(m, aptsRef.current));
-  }, [apts, placeMarkers]);
+    if (!mapReady || !mapRef.current) return;
+    placeMarkers(mapRef.current, apts);
+  }, [mapReady, apts, placeMarkers]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 });
@@ -719,6 +719,19 @@ export default function NewHighsPage() {
   const legendDong = viewMode === 'neighborhood' ? dongLines : [];
   const 구s = filterData?.구s ?? [];
 
+  const { currentMonthStr, thirtyDaysAgoStr } = useMemo(() => {
+    const today = new Date();
+    const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const d30 = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoStr = `${d30.getFullYear()}-${String(d30.getMonth() + 1).padStart(2, '0')}-${String(d30.getDate()).padStart(2, '0')}`;
+    return { currentMonthStr, thirtyDaysAgoStr };
+  }, []);
+
+  const last30Count = useMemo(
+    () => newHighs.filter(nh => nh.date >= thirtyDaysAgoStr).length,
+    [newHighs, thirtyDaysAgoStr],
+  );
+
   return (
     <div className="page-wrap">
 
@@ -875,7 +888,7 @@ export default function NewHighsPage() {
             <div className="wide-layout">
               <div className="wide-col">
                 <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
-                  {selectedGu} 신고가 아파트 {newHighs.length.toLocaleString()}건
+                  {selectedGu} 신고가 아파트 30일 간 {last30Count.toLocaleString()}건
                 </div>
                 <div style={{ overflowY: 'auto', maxHeight: 640 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -887,12 +900,16 @@ export default function NewHighsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {newHighs.map((nh, i) => (
+                      {newHighs.slice(0, 60).map((nh, i) => {
+                        const isCurrentMonth = nh.date >= thirtyDaysAgoStr;
+                        const isSelected = selectedApt?.aptNm === nh.aptNm && selectedApt?.dong === nh.dong && selectedApt?.area === nh.area;
+                        const diff = nh.prevPrice > 0 ? nh.price - nh.prevPrice : 0;
+                        return (
                         <tr
                           key={i}
                           style={{
                             borderBottom: '1px solid #eee',
-                            background: selectedApt?.aptNm === nh.aptNm && selectedApt?.dong === nh.dong && selectedApt?.area === nh.area ? '#f8f8f8' : undefined,
+                            background: isCurrentMonth ? 'rgba(255,0,0,0.1)' : isSelected ? '#f8f8f8' : undefined,
                           }}
                         >
                           <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{nh.date}</td>
@@ -910,9 +927,17 @@ export default function NewHighsPage() {
                             <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4 }}>{nh.area}㎡</span>
                           </td>
                           <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{nh.floor}층</td>
-                          <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(nh.price)}</td>
+                          <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatPrice(nh.price)}
+                            {diff > 0 && (
+                              <span style={{ color: '#16a34a', fontSize: 11, marginLeft: 4 }}>
+                                (↑ {formatPrice(diff)})
+                              </span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

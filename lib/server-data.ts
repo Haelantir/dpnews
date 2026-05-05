@@ -154,6 +154,7 @@ export interface NewHighRecord {
   date: string;
   price: number;
   floor: string;
+  prevPrice: number;
 }
 
 export function getNewHighsByGu(gu: string): NewHighRecord[] {
@@ -176,9 +177,84 @@ export function getNewHighsByGu(gu: string): NewHighRecord[] {
       if (areaTrades.length < 2) continue;
       const sorted = [...areaTrades].sort((a, b) => b.date.localeCompare(a.date));
       const latest = sorted[0];
+      const prevPrice = sorted[1].price;
       const maxPrice = Math.max(...areaTrades.map(t => t.price));
       if (latest.price >= maxPrice) {
-        results.push({ aptNm, gu, dong, area, date: latest.date, price: latest.price, floor: latest.floor });
+        results.push({ aptNm, gu, dong, area, date: latest.date, price: latest.price, floor: latest.floor, prevPrice });
+      }
+    }
+  }
+
+  return results.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export interface UnusualTradeRecord {
+  aptNm: string;
+  gu: string;
+  dong: string;
+  area: number;
+  date: string;
+  price: number;
+  floor: string;
+  prevPrice: number;
+}
+
+export function getUnusualTradesByGu(gu: string): UnusualTradeRecord[] {
+  const index = loadTrades();
+
+  let latestDateStr = '';
+  for (const trades of index.values()) {
+    for (const t of trades) {
+      if (t.date > latestDateStr) latestDateStr = t.date;
+    }
+  }
+  if (!latestDateStr) return [];
+
+  const latestDate = new Date(latestDateStr);
+  const thirtyDaysAgo = new Date(latestDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+  const results: UnusualTradeRecord[] = [];
+
+  for (const [key, trades] of index.entries()) {
+    const parts = key.split('|');
+    if (parts.length < 3 || parts[1] !== gu) continue;
+    const aptNm = parts[0];
+    const dong = parts[2];
+
+    const byArea = new Map<number, TradeRecord[]>();
+    for (const t of trades) {
+      if (!byArea.has(t.area)) byArea.set(t.area, []);
+      byArea.get(t.area)!.push(t);
+    }
+
+    for (const [area, areaTrades] of byArea.entries()) {
+      if (areaTrades.length < 2) continue;
+      const sorted = [...areaTrades].sort((a, b) => a.date.localeCompare(b.date));
+
+      let best: { trade: TradeRecord; prevPrice: number } | null = null;
+
+      for (let i = 1; i < sorted.length; i++) {
+        const curr = sorted[i];
+        const prev = sorted[i - 1];
+        if (curr.date < thirtyDaysAgoStr) continue;
+        if (prev.price <= 0) continue;
+        const dropRatio = (prev.price - curr.price) / prev.price;
+        if (dropRatio >= 0.05) {
+          if (!best || curr.date > best.trade.date) {
+            best = { trade: curr, prevPrice: prev.price };
+          }
+        }
+      }
+
+      if (best) {
+        results.push({
+          aptNm, gu, dong, area,
+          date: best.trade.date,
+          price: best.trade.price,
+          floor: best.trade.floor,
+          prevPrice: best.prevPrice,
+        });
       }
     }
   }

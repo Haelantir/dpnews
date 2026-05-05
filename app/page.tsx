@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 const BUTTONS: ({ label: string; href: string } | null)[] = [
   { label: '우리동네 실거래가', href: '/trades' },
   { label: '우리동네 신고가', href: '/new-highs' },
-  null,
+  { label: '우리동네 특이거래', href: '/unusual-trades' },
   null, null, null,
   null, null, null,
 ];

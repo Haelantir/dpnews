@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useTransition, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useTransition, memo, useRef } from 'react';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   useXAxisScale, useYAxisScale, usePlotArea,
@@ -15,6 +15,7 @@ interface FilterData {
   coords: Record<string, { lat: number; lng: number }>;
 }
 interface Trade { date: string; area: number; price: number; floor: string; aptNm: string; }
+interface UnusualTrade { aptNm: string; gu: string; dong: string; area: number; date: string; price: number; floor: string; prevPrice: number; }
 interface ChartPoint { ts: number; price: number; floor: string; aptNm: string; }
 interface OverlayLine { key: string; color: string; points: ChartPoint[]; label: string; }
 interface OverlayApt {
@@ -28,6 +29,7 @@ interface MapApt {
   lat: number; lng: number; color: string;
   latestDate: string; latestPrice: number;
 }
+interface SelectedApt { aptNm: string; gu: string; dong: string; area: number; }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ function toChartPoints(trades: Trade[], s: number, e: number): ChartPoint[] {
     .sort((a, b) => a.ts - b.ts);
 }
 
-// ── ChartLines (rendered inside ScatterChart, uses recharts 3.x hooks) ────────
+// ── ChartLines ────────────────────────────────────────────────────────────────
 
 const ChartLines = memo(function ChartLines({
   mainPoints, overlayLines, abnormalSet, isOverlayMode, setTooltip,
@@ -103,7 +105,6 @@ const ChartLines = memo(function ChartLines({
   const yScale = useYAxisScale();
   const plotArea = usePlotArea();
 
-  // Build SVG path string from points array
   const buildPath = useCallback((pts: ChartPoint[]) => {
     if (!xScale || !yScale || pts.length === 0) return '';
     return pts.map((p, i) => {
@@ -113,14 +114,10 @@ const ChartLines = memo(function ChartLines({
     }).join('');
   }, [xScale, yScale]);
 
-  // Main line: split normal segments from abnormal segments
   const { normalPath, abnUnderPath } = useMemo(() => {
     if (!mainPoints.length || !xScale || !yScale) return { normalPath: '', abnUnderPath: '' };
     if (isOverlayMode || !abnormalSet.size) return { normalPath: buildPath(mainPoints), abnUnderPath: '' };
-
-    // abnUnderPath = full path drawn at low opacity (shows abnormal segments)
     const abnUnderPath = buildPath(mainPoints);
-    // normalPath = only non-abnormal segments (M instead of L for abnormal gaps)
     let norm = '';
     for (let i = 0; i < mainPoints.length; i++) {
       const x = (xScale(mainPoints[i].ts) ?? 0).toFixed(1);
@@ -132,13 +129,11 @@ const ChartLines = memo(function ChartLines({
     return { normalPath: norm, abnUnderPath };
   }, [mainPoints, abnormalSet, isOverlayMode, buildPath, xScale, yScale]);
 
-  // Overlay paths (memoised per-line)
   const overlayPaths = useMemo(() =>
     overlayLines.map(o => ({ key: o.key, color: o.color, d: buildPath(o.points) })),
     [overlayLines, buildPath],
   );
 
-  // Nearest-point hover on single rect (no per-point hit circles)
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
     if (!xScale || !yScale) return;
     const svg = (e.currentTarget as Element).closest('svg');
@@ -146,10 +141,8 @@ const ChartLines = memo(function ChartLines({
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-
     let bestD = Infinity;
     let bestPt: ChartPoint | null = null;
-
     const scan = (pts: ChartPoint[]) => {
       for (const p of pts) {
         const dx = (xScale(p.ts) ?? 0) - mx;
@@ -160,7 +153,6 @@ const ChartLines = memo(function ChartLines({
     };
     scan(mainPoints);
     for (const o of overlayLines) scan(o.points);
-
     if (bestPt && Math.sqrt(bestD) < 18) {
       const p = bestPt as ChartPoint;
       setTooltip({ x: e.clientX, y: e.clientY, price: p.price, ts: p.ts, floor: p.floor, aptNm: p.aptNm });
@@ -178,31 +170,24 @@ const ChartLines = memo(function ChartLines({
 
   return (
     <g>
-      {/* Overlay lines (behind main) */}
       {overlayPaths.map(({ key, color, d }) => d && (
         <path key={key} d={d} fill="none"
           stroke={color} strokeWidth={0.8} strokeOpacity={0.45}
           strokeLinecap="round" strokeLinejoin="round"
         />
       ))}
-
-      {/* Main: abnormal underlay */}
       {abnUnderPath && (
         <path d={abnUnderPath} fill="none"
           stroke="#bbb" strokeWidth={mainLineW} strokeOpacity={0.15}
           strokeLinecap="round" strokeLinejoin="round"
         />
       )}
-
-      {/* Main: normal path */}
       {normalPath && (
         <path d={normalPath} fill="none"
           stroke={mainLineColor} strokeWidth={mainLineW} strokeOpacity={mainLineAlpha}
           strokeLinecap="round" strokeLinejoin="round"
         />
       )}
-
-      {/* Main: visible dots */}
       {mainPoints.map((p, i) => {
         const isAbn = !isOverlayMode && abnormalSet.has(i);
         return (
@@ -215,8 +200,6 @@ const ChartLines = memo(function ChartLines({
           />
         );
       })}
-
-      {/* Single hover rect — replaces all per-point hit circles */}
       <rect
         x={plotArea.x} y={plotArea.y}
         width={plotArea.width} height={plotArea.height}
@@ -228,7 +211,7 @@ const ChartLines = memo(function ChartLines({
   );
 });
 
-// ── Range Slider ─────────────────────────────────────────────────────────────
+// ── RangeSlider ───────────────────────────────────────────────────────────────
 
 function RangeSlider({ startTs, endTs, onChange }: {
   startTs: number; endTs: number;
@@ -286,22 +269,7 @@ function RangeSlider({ startTs, endTs, onChange }: {
   );
 }
 
-// ── Dropdown ─────────────────────────────────────────────────────────────────
-
-function Select({ value, onChange, options, placeholder, disabled }: {
-  value: string; onChange: (v: string) => void;
-  options: string[]; placeholder: string; disabled: boolean;
-}) {
-  return (
-    <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-      style={{ width: '100%', height: 36, padding: '0 8px', border: '1px solid #333', background: disabled ? '#f5f5f5' : '#fff', color: disabled ? '#aaa' : '#111', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer', appearance: 'auto' }}>
-      <option value="">{placeholder}</option>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-}
-
-// ── Minimal Button ────────────────────────────────────────────────────────────
+// ── MinBtn ────────────────────────────────────────────────────────────────────
 
 function MinBtn({ label, onClick, disabled, active }: {
   label: string; onClick: () => void; disabled?: boolean; active?: boolean;
@@ -320,26 +288,21 @@ function MinBtn({ label, onClick, disabled, active }: {
 
 // ── ApartmentMap helpers ──────────────────────────────────────────────────────
 
-const ST_R = 6;   // station circle radius
-const ST_PAD = 2; // padding around circle in SVG
+const ST_R = 6;
+const ST_PAD = 2;
 
 function buildStationMarkerEl(colors: string[], name: string): HTMLElement {
   const size = (ST_R + ST_PAD) * 2;
   const c = ST_R + ST_PAD;
   const ns = 'http://www.w3.org/2000/svg';
-
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('width', String(size));
   svg.setAttribute('height', String(size));
-
   if (colors.length === 1) {
     const circle = document.createElementNS(ns, 'circle');
-    circle.setAttribute('cx', String(c));
-    circle.setAttribute('cy', String(c));
-    circle.setAttribute('r', String(ST_R));
-    circle.setAttribute('fill', colors[0]);
-    circle.setAttribute('stroke', '#fff');
-    circle.setAttribute('stroke-width', '1.5');
+    circle.setAttribute('cx', String(c)); circle.setAttribute('cy', String(c));
+    circle.setAttribute('r', String(ST_R)); circle.setAttribute('fill', colors[0]);
+    circle.setAttribute('stroke', '#fff'); circle.setAttribute('stroke-width', '1.5');
     svg.appendChild(circle);
   } else {
     const n = colors.length;
@@ -353,21 +316,16 @@ function buildStationMarkerEl(colors: string[], name: string): HTMLElement {
       const large = 1 / n > 0.5 ? 1 : 0;
       const path = document.createElementNS(ns, 'path');
       path.setAttribute('d', `M${c},${c} L${x0},${y0} A${ST_R},${ST_R} 0 ${large},1 ${x1},${y1} Z`);
-      path.setAttribute('fill', colors[i]);
-      path.setAttribute('stroke', '#fff');
+      path.setAttribute('fill', colors[i]); path.setAttribute('stroke', '#fff');
       path.setAttribute('stroke-width', '0.5');
       svg.appendChild(path);
     }
     const ring = document.createElementNS(ns, 'circle');
-    ring.setAttribute('cx', String(c));
-    ring.setAttribute('cy', String(c));
-    ring.setAttribute('r', String(ST_R));
-    ring.setAttribute('fill', 'none');
-    ring.setAttribute('stroke', '#fff');
-    ring.setAttribute('stroke-width', '1.5');
+    ring.setAttribute('cx', String(c)); ring.setAttribute('cy', String(c));
+    ring.setAttribute('r', String(ST_R)); ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', '#fff'); ring.setAttribute('stroke-width', '1.5');
     svg.appendChild(ring);
   }
-
   const label = document.createElement('div');
   label.className = 'st-label';
   label.textContent = name;
@@ -375,7 +333,6 @@ function buildStationMarkerEl(colors: string[], name: string): HTMLElement {
     'font-size:9px;font-family:system-ui,-apple-system,sans-serif;color:#1a1a2e;' +
     'white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;' +
     'line-height:1.2;text-align:center;margin-top:1px;';
-
   const outer = document.createElement('div');
   outer.style.cssText = 'pointer-events:none;display:flex;flex-direction:column;align-items:center;';
   outer.appendChild(svg);
@@ -383,7 +340,7 @@ function buildStationMarkerEl(colors: string[], name: string): HTMLElement {
   return outer;
 }
 
-// ── ApartmentMap ─────────────────────────────────────────────────────────────
+// ── ApartmentMap ──────────────────────────────────────────────────────────────
 
 const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -400,33 +357,27 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
     if (!data.length) return;
-
     const bounds = new mgl.LngLatBounds();
     for (const apt of data) {
       const outer = document.createElement('div');
       outer.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:none;';
-
       const box = document.createElement('div');
       const isMain = apt.color === '#111';
       box.style.cssText =
         `background:#fff;border:${isMain ? '2px' : '1.5px'} solid ${apt.color};` +
         'border-radius:2px;padding:3px 7px;white-space:nowrap;' +
         'font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.15);';
-
       const nm = document.createElement('div');
       nm.style.cssText = `font-size:11px;font-weight:700;color:${isMain ? '#111' : apt.color};line-height:1.45;`;
       nm.textContent = `${apt.aptNm} ${apt.area}㎡`;
-
       const pr = document.createElement('div');
       pr.style.cssText = 'font-size:10px;color:#555;line-height:1.45;';
       const [, mm, dd] = apt.latestDate.split('-');
       pr.textContent = `${Number(mm)}/${Number(dd)} ${formatPrice(apt.latestPrice)}`;
-
       const tip = document.createElement('div');
       tip.style.cssText =
         'width:0;height:0;border-left:5px solid transparent;' +
         `border-right:5px solid transparent;border-top:6px solid ${apt.color};`;
-
       box.append(nm, pr);
       outer.append(box, tip);
       markersRef.current.push(
@@ -436,7 +387,6 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       );
       bounds.extend([apt.lng, apt.lat]);
     }
-
     if (data.length === 1) {
       mapInst.flyTo({ center: [data[0].lng, data[0].lat], zoom: 15, duration: 700 });
     } else {
@@ -448,7 +398,6 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
     if (!containerRef.current) return;
     let cancelled = false;
     let mapInst: any = null;
-
     (async () => {
       const mgl = await import('maplibre-gl');
       mglRef.current = mgl;
@@ -464,8 +413,6 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
       mapInst.addControl(new mgl.AttributionControl({ compact: true }), 'bottom-right');
       mapInst.once('load', () => {
         if (cancelled) return;
-
-        // ── 도로명 한국어만 ───────────────────────────────────────────────
         for (const id of ['highway-name-path', 'highway-name-minor', 'highway-name-major']) {
           if (mapInst.getLayer(id)) mapInst.setLayoutProperty(id, 'text-field', ['get', 'name']);
         }
@@ -474,50 +421,32 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
             try { mapInst.setLayoutProperty(layer.id, 'text-field', ['get', 'name']); } catch (_) {}
           }
         }
-
-        // ── 지하철 노선 숨기기 ────────────────────────────────────────────
         for (const id of ['railway_transit', 'railway_transit_dashline']) {
           if (mapInst.getLayer(id)) {
             try { mapInst.setLayoutProperty(id, 'visibility', 'none'); } catch (_) {}
           }
         }
-
-        // ── 학교 레이블 ───────────────────────────────────────────────────
         try {
           mapInst.addLayer({
-            id: 'custom-school-label',
-            type: 'symbol',
-            source: 'openmaptiles',
+            id: 'custom-school-label', type: 'symbol', source: 'openmaptiles',
             'source-layer': 'poi',
-            filter: ['match', ['get', 'class'],
-              ['school', 'college', 'university', 'kindergarten'], true, false],
+            filter: ['match', ['get', 'class'], ['school', 'college', 'university', 'kindergarten'], true, false],
             layout: {
               'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']],
-              'text-font': ['Noto Sans Regular'],
-              'text-size': 10,
-              'text-anchor': 'center',
-              'text-max-width': 6,
+              'text-font': ['Noto Sans Regular'], 'text-size': 10,
+              'text-anchor': 'center', 'text-max-width': 6,
             },
-            paint: {
-              'text-color': '#059669',
-              'text-halo-color': '#fff',
-              'text-halo-width': 1.5,
-            },
+            paint: { 'text-color': '#059669', 'text-halo-color': '#fff', 'text-halo-width': 1.5 },
             minzoom: 13,
           });
         } catch (_) {}
-
         mapRef.current = mapInst;
-
-        // ── 지하철역 마커 (JSON 데이터) ───────────────────────────────────
-        // 레이블 참조를 미리 캐싱해 zoom 핸들러에서 querySelector 호출 제거
         const updateStVis = (zoom: number) => {
           const show = zoom >= 10;
           const showLbl = zoom >= 12;
           for (const el of stationElsRef.current) el.style.display = show ? '' : 'none';
           for (const lbl of stationLblsRef.current) lbl.style.display = showLbl ? '' : 'none';
         };
-
         fetch('/api/stations')
           .then(r => r.json())
           .then((stations: { name: string; lat: number; lng: number; colors: string[] }[]) => {
@@ -536,13 +465,10 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
             updateStVis(mapInst.getZoom());
           })
           .catch(() => {});
-
         mapInst.on('zoom', () => updateStVis(mapInst.getZoom()));
-
         setMapReady(true);
       });
     })();
-
     return () => {
       cancelled = true;
       mapRef.current = null;
@@ -564,20 +490,16 @@ const ApartmentMap = memo(function ApartmentMap({ apts }: { apts: MapApt[] }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-// RangeSlider needs a non-null ref import
-import { useRef } from 'react';
-
-export default function Home() {
+export default function UnusualTradesPage() {
   const [filterData, setFilterData] = useState<FilterData | null>(null);
-  const [gu, setGu] = useState('');
-  const [dong, setDong] = useState('');
-  const [apt, setApt] = useState('');
-  const [area, setArea] = useState('');
-  const [areas, setAreas] = useState<number[]>([]);
+  const [selectedGu, setSelectedGu] = useState('');
+  const [unusualTrades, setUnusualTrades] = useState<UnusualTrade[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+
+  const [selectedApt, setSelectedApt] = useState<SelectedApt | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Slider state: immediate (visual) vs deferred (chart data)
   const [sliderStart, setSliderStart] = useState(MIN_TS);
   const [sliderEnd, setSliderEnd] = useState(MAX_TS);
   const [startTs, setStartTs] = useState(MIN_TS);
@@ -585,13 +507,10 @@ export default function Home() {
   const [, startTransition] = useTransition();
 
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-
-  // Mode
   const [viewMode, setViewMode] = useState<ViewMode>('single');
   const [overlayApts, setOverlayApts] = useState<OverlayApt[]>([]);
   const [loadingOverlay, setLoadingOverlay] = useState(false);
 
-  // 우리동네
   const [dongAptList, setDongAptList] = useState<string[]>([]);
   const [checkedApts, setCheckedApts] = useState<Set<string>>(new Set());
   const [dongAptData, setDongAptData] = useState<Map<string, Trade[]>>(new Map());
@@ -601,24 +520,49 @@ export default function Home() {
     fetch('/api/filter-data').then(r => r.json()).then(setFilterData);
   }, []);
 
-  useEffect(() => {
-    if (!gu || !dong || !apt) { setAreas([]); setArea(''); setTrades([]); return; }
-    fetch(`/api/areas?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}`)
-      .then(r => r.json()).then((d: number[]) => { setAreas(d); });
-  }, [gu, dong, apt]);
+  const handleGuSelect = async (gu: string) => {
+    if (gu === selectedGu) return;
+    setSelectedGu(gu);
+    setUnusualTrades([]);
+    setSelectedApt(null);
+    setTrades([]);
+    setViewMode('single');
+    setOverlayApts([]);
+    setDongAptList([]);
+    setCheckedApts(new Set());
+    setDongAptData(new Map());
+    setLoadingList(true);
+    try {
+      const res = await fetch(`/api/unusual-trades?gu=${encodeURIComponent(gu)}`);
+      setUnusualTrades(await res.json());
+    } finally {
+      setLoadingList(false);
+    }
+  };
 
-  useEffect(() => {
-    if (!gu || !dong || !apt || !area) { setTrades([]); return; }
+  const handleAptSelect = async (ut: UnusualTrade) => {
+    const isSame = selectedApt?.aptNm === ut.aptNm && selectedApt?.gu === ut.gu &&
+      selectedApt?.dong === ut.dong && selectedApt?.area === ut.area;
+    if (isSame) return;
+    setSelectedApt({ aptNm: ut.aptNm, gu: ut.gu, dong: ut.dong, area: ut.area });
+    setViewMode('single');
+    setOverlayApts([]);
+    setDongAptList([]);
+    setCheckedApts(new Set());
+    setDongAptData(new Map());
     setLoading(true);
-    fetch(`/api/trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`)
-      .then(r => r.json())
-      .then((d: Trade[]) => {
-        setTrades(d);
-        setSliderStart(MIN_TS); setSliderEnd(MAX_TS);
-        setStartTs(MIN_TS); setEndTs(MAX_TS);
-      })
-      .finally(() => setLoading(false));
-  }, [gu, dong, apt, area]);
+    try {
+      const res = await fetch(
+        `/api/trades?gu=${encodeURIComponent(ut.gu)}&dong=${encodeURIComponent(ut.dong)}&apt=${encodeURIComponent(ut.aptNm)}&area=${ut.area}`
+      );
+      const data: Trade[] = await res.json();
+      setTrades(data);
+      setSliderStart(MIN_TS); setSliderEnd(MAX_TS);
+      setStartTs(MIN_TS); setEndTs(MAX_TS);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const resetMode = useCallback(() => {
     setViewMode('single');
@@ -628,23 +572,20 @@ export default function Home() {
     setDongAptData(new Map());
   }, []);
 
-  const handleGuChange = (v: string) => { setGu(v); setDong(''); setApt(''); setArea(''); setTrades([]); resetMode(); };
-  const handleDongChange = (v: string) => { setDong(v); setApt(''); setArea(''); setTrades([]); resetMode(); };
-  const handleAptChange = (v: string) => { setApt(v); setArea(''); setTrades([]); resetMode(); };
-
-  // Slider: handle moves immediately, chart data updates deferred
   const handleRangeChange = useCallback((s: number, e: number) => {
     setSliderStart(s); setSliderEnd(e);
     startTransition(() => { setStartTs(s); setEndTs(e); });
   }, [startTransition]);
 
   const handleNearby = async () => {
+    if (!selectedApt) return;
     if (viewMode === 'nearby') { resetMode(); return; }
     resetMode();
     setViewMode('nearby');
     setLoadingOverlay(true);
     try {
-      const res = await fetch(`/api/nearby-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(apt)}&area=${area}`);
+      const { aptNm, gu, dong, area } = selectedApt;
+      const res = await fetch(`/api/nearby-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(aptNm)}&area=${area}`);
       const data: { aptNm: string; gu: string; dong: string; area: number; trades: Trade[] }[] = await res.json();
       setOverlayApts(data.map((d, i) => ({
         key: `${d.aptNm}|${d.gu}|${d.dong}`,
@@ -654,14 +595,17 @@ export default function Home() {
   };
 
   const handleNeighborhood = () => {
+    if (!selectedApt) return;
     if (viewMode === 'neighborhood') { resetMode(); return; }
     resetMode();
     setViewMode('neighborhood');
-    if (!filterData || !gu || !dong) return;
-    setDongAptList((filterData.아파트s[`${gu}|${dong}`] ?? []).filter(a => a !== apt));
+    if (!filterData) return;
+    const { gu, dong, aptNm } = selectedApt;
+    setDongAptList((filterData.아파트s[`${gu}|${dong}`] ?? []).filter(a => a !== aptNm));
   };
 
   const toggleDongApt = async (aptNm: string) => {
+    if (!selectedApt) return;
     const next = new Set(checkedApts);
     if (next.has(aptNm)) {
       next.delete(aptNm);
@@ -671,9 +615,9 @@ export default function Home() {
       setCheckedApts(next);
       if (!dongAptData.has(aptNm)) {
         setLoadingDong(prev => new Set(prev).add(aptNm));
-        const areaNum = Number(area);
+        const areaNum = selectedApt.area;
         try {
-          const res = await fetch(`/api/dong-trades?gu=${encodeURIComponent(gu)}&dong=${encodeURIComponent(dong)}&apt=${encodeURIComponent(aptNm)}&minArea=${areaNum * 0.9}&maxArea=${areaNum * 1.1}`);
+          const res = await fetch(`/api/dong-trades?gu=${encodeURIComponent(selectedApt.gu)}&dong=${encodeURIComponent(selectedApt.dong)}&apt=${encodeURIComponent(aptNm)}&minArea=${areaNum * 0.9}&maxArea=${areaNum * 1.1}`);
           const data: Trade[] = await res.json();
           setDongAptData(prev => new Map(prev).set(aptNm, data));
         } finally {
@@ -683,7 +627,6 @@ export default function Home() {
     }
   };
 
-  // Chart data (deferred via startTs/endTs)
   const chartData = useMemo(() => toChartPoints(trades, startTs, endTs), [trades, startTs, endTs]);
 
   const abnormalSet = useMemo(() => {
@@ -707,12 +650,12 @@ export default function Home() {
   const dongLines = useMemo((): OverlayLine[] => {
     let ci = 0;
     return Array.from(checkedApts).map(aptNm => {
-      const trades = dongAptData.get(aptNm) ?? [];
-      const firstArea = trades[0]?.area;
+      const t = dongAptData.get(aptNm) ?? [];
+      const firstArea = t[0]?.area;
       return {
         key: aptNm,
         color: OVERLAY_COLORS[ci++ % OVERLAY_COLORS.length],
-        points: toChartPoints(trades, startTs, endTs),
+        points: toChartPoints(t, startTs, endTs),
         label: firstArea ? `${aptNm} (${firstArea}㎡)` : aptNm,
       };
     });
@@ -727,18 +670,19 @@ export default function Home() {
     return getYTicks(Math.min(...prices), Math.max(...prices));
   }, [chartData, allOverlayLines]);
 
-  const dongs = gu && filterData ? (filterData.동s[gu] ?? []) : [];
-  const apts = gu && dong && filterData ? (filterData.아파트s[`${gu}|${dong}`] ?? []) : [];
-  const showChart = !!area && trades.length > 0;
+  const showChart = !!selectedApt && trades.length > 0 && !loading;
+  const isOverlayMode = viewMode !== 'single';
+  const canUseButtons = showChart;
+  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
 
   const mapApts = useMemo((): MapApt[] => {
-    if (!showChart || !filterData) return [];
+    if (!selectedApt || !filterData || !showChart) return [];
     const result: MapApt[] = [];
-
-    const mainCoord = filterData.coords[`${apt}|${gu}|${dong}`];
+    const mainCoord = filterData.coords[`${selectedApt.aptNm}|${selectedApt.gu}|${selectedApt.dong}`];
     if (mainCoord && trades.length > 0) {
       result.push({
-        key: `${apt}|${gu}|${dong}`, aptNm: apt, area: Number(area),
+        key: `${selectedApt.aptNm}|${selectedApt.gu}|${selectedApt.dong}`,
+        aptNm: selectedApt.aptNm, area: selectedApt.area,
         lat: mainCoord.lat, lng: mainCoord.lng, color: '#111',
         latestDate: trades[0].date, latestPrice: trades[0].price,
       });
@@ -758,7 +702,7 @@ export default function Home() {
       for (const aptNm of checkedApts) {
         const t = dongAptData.get(aptNm);
         if (!t?.length) continue;
-        const coord = filterData.coords[`${aptNm}|${gu}|${dong}`];
+        const coord = filterData.coords[`${aptNm}|${selectedApt.gu}|${selectedApt.dong}`];
         if (!coord) continue;
         result.push({
           key: aptNm, aptNm, area: t[0].area,
@@ -769,109 +713,132 @@ export default function Home() {
       }
     }
     return result;
-  }, [showChart, filterData, apt, gu, dong, area, trades, viewMode, overlayApts, checkedApts, dongAptData]);
-  const isOverlayMode = viewMode !== 'single';
-  const canUseButtons = showChart && !loading;
-  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
+  }, [selectedApt, filterData, showChart, trades, viewMode, overlayApts, checkedApts, dongAptData]);
 
-  // Legend data
   const legendNearby = viewMode === 'nearby' ? overlayLines : [];
   const legendDong = viewMode === 'neighborhood' ? dongLines : [];
+  const 구s = filterData?.구s ?? [];
 
   return (
     <div className="page-wrap">
 
       {/* Title */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>우리동네 실거래가</h1>
-        <p style={{ fontSize: 13, color: '#999', margin: 0 }}>아파트를 선택하고 함께보기를 눌러보세요! 옆단지 함께보기는 반경 750m 이내, 우리동네 함께보기는 같은 동 아파트의 비슷한 평수가 검색됩니다.</p>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>우리동네 특이거래</h1>
+        <p style={{ fontSize: 13, color: '#999', margin: 0 }}>구를 선택하면 최근 거래에서 큰 폭의 하락이 감지된 아파트 목록을 보여줍니다. 아파트명을 클릭하면 차트가 표시됩니다.</p>
       </div>
 
-      {/* Dropdowns */}
-      <div className="filter-grid">
-        <Select value={gu} onChange={handleGuChange} options={filterData?.구s ?? []} placeholder="구 선택" disabled={!filterData} />
-        <Select value={dong} onChange={handleDongChange} options={dongs} placeholder="동 선택" disabled={!gu} />
-        <Select value={apt} onChange={handleAptChange} options={apts} placeholder="아파트 선택" disabled={!dong} />
-        <Select value={area} onChange={v => { setArea(v); resetMode(); }} options={areas.map(String)} placeholder="면적(㎡)" disabled={!apt || areas.length === 0} />
+      {/* 구 버튼 그리드 */}
+      <div className="gu-grid">
+        {구s.map(gu => (
+          <button
+            key={gu}
+            onClick={() => handleGuSelect(gu)}
+            style={{
+              height: 36, padding: '0 8px', border: `1px solid ${selectedGu === gu ? '#111' : '#333'}`,
+              background: selectedGu === gu ? '#111' : '#fff',
+              color: selectedGu === gu ? '#fff' : '#111',
+              fontSize: 13, cursor: 'pointer', appearance: 'none',
+              fontFamily: 'inherit', fontWeight: selectedGu === gu ? 700 : 400,
+            }}
+          >
+            {gu}
+          </button>
+        ))}
       </div>
 
-      {/* Chart + Buttons */}
-      {showChart && (
+      {/* 차트 + 버튼 */}
+      {selectedApt && (
         <>
           <div className="chart-layout">
             <div className="chart-col">
 
+              {/* 선택된 아파트 정보 */}
+              <div style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>
+                <b style={{ color: '#111' }}>{selectedApt.aptNm}</b>
+                <span style={{ marginLeft: 8, color: '#888' }}>{selectedApt.dong} · {selectedApt.area}㎡</span>
+              </div>
+
               {/* Chart */}
-              <div style={{ width: '100%', aspectRatio: '2/1', border: '1px solid #ddd', boxSizing: 'border-box' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                    <XAxis
-                      dataKey="ts" type="number"
-                      domain={[startTs, endTs]}
-                      tickFormatter={ts => tsToLabel(Number(ts))}
-                      tick={{ fontSize: 11, fill: '#555' }}
-                      tickCount={6} minTickGap={40}
-                    />
-                    <YAxis
-                      dataKey="price" type="number"
-                      domain={yDomain} ticks={yTicks}
-                      tickFormatter={formatYTick}
-                      tick={{ fontSize: 11, fill: '#555' }} width={56}
-                    />
-                    {/* 축 스케일 초기화용 invisible Scatter (useXAxisScale/useYAxisScale 활성화) */}
-                    <Scatter
-                      data={chartData.length > 0 ? chartData : [{ ts: startTs, price: yDomain[0] }]}
-                      isAnimationActive={false}
-                      shape={() => null as unknown as React.ReactElement}
-                      opacity={0}
-                    />
-                    <ChartLines
-                      mainPoints={chartData}
-                      overlayLines={allOverlayLines}
-                      abnormalSet={abnormalSet}
-                      isOverlayMode={isOverlayMode}
-                      setTooltip={setTooltip}
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Slider */}
-              <div className="slider-wrap">
-                <RangeSlider startTs={sliderStart} endTs={sliderEnd} onChange={handleRangeChange} />
-              </div>
-
-              {/* Trade count */}
-              <div style={{ textAlign: 'right', fontSize: 11, color: '#888', marginBottom: 8 }}>
-                {chartData.length.toLocaleString()}건 표시 / 전체 {trades.length.toLocaleString()}건
-              </div>
-
-              {/* Legend */}
-              {(legendNearby.length > 0 || legendDong.length > 0) && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, color: '#333', marginBottom: 12, paddingLeft: 4 }}>
-                  <span><b style={{ color: '#111' }}>●</b> {apt} ({area}㎡)</span>
-                  {[...legendNearby, ...legendDong].map(o => (
-                    <span key={o.key}><b style={{ color: o.color }}>●</b> {o.label}</span>
-                  ))}
+              {loading ? (
+                <div style={{ width: '100%', aspectRatio: '2/1', border: '1px solid #ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 13 }}>
+                  불러오는 중...
                 </div>
-              )}
+              ) : showChart ? (
+                <div style={{ width: '100%', aspectRatio: '2/1', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 16, right: 16, bottom: 8, left: 24 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                      <XAxis
+                        dataKey="ts" type="number"
+                        domain={[startTs, endTs]}
+                        tickFormatter={ts => tsToLabel(Number(ts))}
+                        tick={{ fontSize: 11, fill: '#555' }}
+                        tickCount={6} minTickGap={40}
+                      />
+                      <YAxis
+                        dataKey="price" type="number"
+                        domain={yDomain} ticks={yTicks}
+                        tickFormatter={formatYTick}
+                        tick={{ fontSize: 11, fill: '#555' }} width={56}
+                      />
+                      <Scatter
+                        data={chartData.length > 0 ? chartData : [{ ts: startTs, price: yDomain[0] }]}
+                        isAnimationActive={false}
+                        shape={() => null as unknown as React.ReactElement}
+                        opacity={0}
+                      />
+                      <ChartLines
+                        mainPoints={chartData}
+                        overlayLines={allOverlayLines}
+                        abnormalSet={abnormalSet}
+                        isOverlayMode={isOverlayMode}
+                        setTooltip={setTooltip}
+                      />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : null}
 
-              {/* 우리동네 checklist */}
-              {viewMode === 'neighborhood' && dongAptList.length > 0 && (
-                <div style={{ border: '1px solid #eee', padding: '10px 12px', marginBottom: 12, maxHeight: 200, overflowY: 'auto' }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>{dong} 내 아파트 (체크하면 차트에 추가)</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {dongAptList.map(aptNm => (
-                      <label key={aptNm} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={checkedApts.has(aptNm)} onChange={() => toggleDongApt(aptNm)} disabled={loadingDong.has(aptNm)} />
-                        <span style={{ color: loadingDong.has(aptNm) ? '#aaa' : '#222' }}>
-                          {aptNm}{loadingDong.has(aptNm) ? ' …' : ''}
-                        </span>
-                      </label>
-                    ))}
+              {showChart && (
+                <>
+                  {/* Slider */}
+                  <div className="slider-wrap">
+                    <RangeSlider startTs={sliderStart} endTs={sliderEnd} onChange={handleRangeChange} />
                   </div>
-                </div>
+
+                  {/* Trade count */}
+                  <div style={{ textAlign: 'right', fontSize: 11, color: '#888', marginBottom: 8 }}>
+                    {chartData.length.toLocaleString()}건 표시 / 전체 {trades.length.toLocaleString()}건
+                  </div>
+
+                  {/* Legend */}
+                  {(legendNearby.length > 0 || legendDong.length > 0) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, color: '#333', marginBottom: 12, paddingLeft: 4 }}>
+                      <span><b style={{ color: '#111' }}>●</b> {selectedApt.aptNm} ({selectedApt.area}㎡)</span>
+                      {[...legendNearby, ...legendDong].map(o => (
+                        <span key={o.key}><b style={{ color: o.color }}>●</b> {o.label}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 우리동네 checklist */}
+                  {viewMode === 'neighborhood' && dongAptList.length > 0 && (
+                    <div style={{ border: '1px solid #eee', padding: '10px 12px', marginBottom: 12, maxHeight: 200, overflowY: 'auto' }}>
+                      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>{selectedApt.dong} 내 아파트 (체크하면 차트에 추가)</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {dongAptList.map(aptNm => (
+                          <label key={aptNm} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={checkedApts.has(aptNm)} onChange={() => toggleDongApt(aptNm)} disabled={loadingDong.has(aptNm)} />
+                            <span style={{ color: loadingDong.has(aptNm) ? '#aaa' : '#222' }}>
+                              {aptNm}{loadingDong.has(aptNm) ? ' …' : ''}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -884,48 +851,88 @@ export default function Home() {
           </div>
 
           {/* Map */}
-          <div className="wide-layout" style={{ marginTop: 16 }}>
-            <div className="wide-col">
-              <div style={{ width: '100%', aspectRatio: '1/1', border: '1px solid #ddd', boxSizing: 'border-box' }}>
-                <ApartmentMap apts={mapApts} />
+          {showChart && (
+            <div className="wide-layout" style={{ marginTop: 16 }}>
+              <div className="wide-col">
+                <div style={{ width: '100%', aspectRatio: '1/1', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                  <ApartmentMap apts={mapApts} />
+                </div>
               </div>
+              <div className="hidden-mobile" />
             </div>
-            <div className="hidden-mobile" />
-          </div>
-
-          {/* Table */}
-          <div className="wide-layout" style={{ marginTop: 24 }}>
-          <div className="wide-col">
-            <div style={{ overflowY: 'auto', maxHeight: 640 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
-                  <tr>
-                    {['계약일', '아파트명', '층', '실거래가'].map(h => (
-                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap', borderBottom: '2px solid #111' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {trades
-                    .filter(t => { const ts = new Date(t.date).getTime(); return ts >= startTs && ts <= endTs; })
-                    .map((t, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{t.date}</td>
-                        <td style={{ padding: '6px 8px' }}>{t.aptNm}</td>
-                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{t.floor}층</td>
-                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(t.price)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-            <div className="hidden-mobile" />
-          </div>
+          )}
         </>
       )}
 
-      {loading && <div style={{ color: '#888', fontSize: 13 }}>불러오는 중...</div>}
+      {/* 특이거래 표 */}
+      {selectedGu && (
+        <div style={{ marginTop: selectedApt ? 24 : 0 }}>
+          {loadingList ? (
+            <div style={{ color: '#888', fontSize: 13 }}>불러오는 중...</div>
+          ) : unusualTrades.length === 0 && !loadingList ? (
+            <div style={{ color: '#aaa', fontSize: 13 }}>특이거래 데이터가 없습니다.</div>
+          ) : (
+            <div className="wide-layout">
+              <div className="wide-col">
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
+                  {selectedGu} 특이거래 아파트 30일 간 {unusualTrades.length.toLocaleString()}건
+                </div>
+                <div style={{ overflowY: 'auto', maxHeight: 640 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                      <tr>
+                        {['계약일', '아파트명', '층', '실거래가'].map(h => (
+                          <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap', borderBottom: '2px solid #111' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unusualTrades.slice(0, 60).map((ut, i) => {
+                        const isSelected = selectedApt?.aptNm === ut.aptNm && selectedApt?.dong === ut.dong && selectedApt?.area === ut.area;
+                        const drop = ut.prevPrice - ut.price;
+                        return (
+                          <tr
+                            key={i}
+                            style={{
+                              borderBottom: '1px solid #eee',
+                              background: isSelected ? '#f8f8f8' : undefined,
+                            }}
+                          >
+                            <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555', fontSize: 12 }}>{ut.date}</td>
+                            <td style={{ padding: '6px 8px' }}>
+                              <button
+                                onClick={() => handleAptSelect(ut)}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                  color: '#1d4ed8', textDecoration: 'underline',
+                                  fontSize: 13, fontFamily: 'inherit', textAlign: 'left',
+                                }}
+                              >
+                                {ut.aptNm}
+                              </button>
+                              <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4 }}>{ut.area}㎡</span>
+                            </td>
+                            <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{ut.floor}층</td>
+                            <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                              {formatPrice(ut.price)}
+                              {drop > 0 && (
+                                <span style={{ color: '#dc2626', fontSize: 11, marginLeft: 4 }}>
+                                  (↓ {formatPrice(drop)})
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="hidden-mobile" />
+            </div>
+          )}
+        </div>
+      )}
 
       {tooltip && (
         <div style={{
