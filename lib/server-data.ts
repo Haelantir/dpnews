@@ -258,7 +258,15 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
   }
   const allMonths = generateMonths('2020-01', globalLatestYm);
 
-  const summaries: (TopAptTableItem & { months: { ts: number; price: number }[] })[] = [];
+  // globalLatestYm 기준으로 몇 달 전인지 계산
+  const [gly, glm] = globalLatestYm.split('-').map(Number);
+  const monthsStaleOf = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    return (gly - y) * 12 + (glm - m);
+  };
+
+  type Summary = TopAptTableItem & { months: { ts: number; price: number }[]; stale: boolean };
+  const summaries: Summary[] = [];
 
   for (const { aptNm, dong, data } of aptRawMap.values()) {
     if (data.size === 0) continue;
@@ -272,6 +280,8 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     const firstYm = knownYms[0];
     const lastYm = knownYms[knownYms.length - 1];
     const lastKnownPrice = avgByYm.get(lastYm)!;
+    // 12개월 이상 거래 없으면 stale로 분류 → 최신 거래 아파트 아래로
+    const stale = monthsStaleOf(lastYm) > 12;
 
     const months: { ts: number; price: number }[] = [];
     for (const ym of allMonths) {
@@ -280,10 +290,8 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
       if (avgByYm.has(ym)) {
         months.push({ ts, price: avgByYm.get(ym)! });
       } else if (ym > lastYm) {
-        // 마지막 실거래 이후: 평탄 외삽
         months.push({ ts, price: lastKnownPrice });
       } else {
-        // 중간 구간: 선형 보간
         const prevYm = knownYms.filter(k => k < ym).pop() ?? null;
         const nextYm = knownYms.find(k => k > ym) ?? null;
         if (prevYm && nextYm) {
@@ -297,12 +305,15 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     }
 
     if (months.length === 0) continue;
-    // 기준 월 가격: 실거래 있으면 그 값, 없으면 마지막 실거래 값(평탄 외삽)
     const referencePrice = avgByYm.get(globalLatestYm) ?? lastKnownPrice;
-    summaries.push({ aptNm, dong, latestPrice: referencePrice, months });
+    summaries.push({ aptNm, dong, latestPrice: referencePrice, months, stale });
   }
 
-  summaries.sort((a, b) => b.latestPrice - a.latestPrice);
+  // 최근 거래 아파트 먼저, 그 안에서 가격 DESC / stale은 뒤로
+  summaries.sort((a, b) => {
+    if (a.stale !== b.stale) return a.stale ? 1 : -1;
+    return b.latestPrice - a.latestPrice;
+  });
 
   const result: TopAptsResponse = {
     chart: summaries.slice(0, 10).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),

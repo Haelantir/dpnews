@@ -287,7 +287,7 @@ export default function TopAptsPage() {
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>
                 <b style={{ color: '#111' }}>{selectedGu}</b>
-                <span style={{ marginLeft: 8, color: '#888' }}>상위 20개 아파트 · 월별 1㎡당 평균 단가 (만원/㎡)</span>
+                <span style={{ marginLeft: 8, color: '#888' }}>상위 10개 아파트 · 월별 1㎡당 평균 단가 (만원/㎡)</span>
               </div>
 
               <div style={{ width: '100%', aspectRatio: '2/1', border: '1px solid #ddd', boxSizing: 'border-box' }}>
