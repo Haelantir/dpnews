@@ -7,7 +7,8 @@ const BUTTONS: ({ label: string; href: string } | null)[] = [
   { label: '우리동네 실거래가', href: '/trades' },
   { label: '우리동네 신고가', href: '/new-highs' },
   { label: '우리동네 특이거래', href: '/unusual-trades' },
-  null, null, null,
+  { label: '지역별 대장아파트', href: '/top-apts' },
+  null, null,
   null, null, null,
 ];
 

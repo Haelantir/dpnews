@@ -23,7 +23,8 @@ export async function GET(req: Request) {
   const coords = (filterData as { coords: Coords }).coords;
   const myKey = `${apt}|${gu}|${dong}`;
   const myCoord = coords[myKey];
-  if (!myCoord || !area) return Response.json([]);
+  const HEADERS = { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' };
+  if (!myCoord || !area) return Response.json([], { headers: HEADERS });
 
   const minArea = area * 0.9;
   const maxArea = area * 1.1;
@@ -46,5 +47,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return Response.json(results);
+  return Response.json(results, { headers: HEADERS });
 }

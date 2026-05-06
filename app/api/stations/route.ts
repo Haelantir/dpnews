@@ -35,7 +35,8 @@ export interface StationMarker { name: string; lat: number; lng: number; colors:
 let cache: StationMarker[] | null = null;
 
 export async function GET() {
-  if (cache) return Response.json(cache);
+  const HEADERS = { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' };
+  if (cache) return Response.json(cache, { headers: HEADERS });
 
   const raw = JSON.parse(
     fs.readFileSync(path.join(process.cwd(), 'data', '서울시_역사마스터_정보.json'), 'utf-8')
@@ -64,5 +65,5 @@ export async function GET() {
     });
   }
 
-  return Response.json(cache);
+  return Response.json(cache, { headers: HEADERS });
 }

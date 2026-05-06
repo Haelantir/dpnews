@@ -157,7 +157,10 @@ export interface NewHighRecord {
   prevPrice: number;
 }
 
+const newHighsCache = new Map<string, NewHighRecord[]>();
+
 export function getNewHighsByGu(gu: string): NewHighRecord[] {
+  if (newHighsCache.has(gu)) return newHighsCache.get(gu)!;
   const index = loadTrades();
   const results: NewHighRecord[] = [];
 
@@ -185,7 +188,115 @@ export function getNewHighsByGu(gu: string): NewHighRecord[] {
     }
   }
 
-  return results.sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = results.sort((a, b) => b.date.localeCompare(a.date));
+  newHighsCache.set(gu, sorted);
+  return sorted;
+}
+
+// ── Top Apts by ㎡ price ─────────────────────────────────────────────────────
+
+function generateMonths(startYm: string, endYm: string): string[] {
+  const months: string[] = [];
+  let [y, m] = startYm.split('-').map(Number);
+  const [ey, em] = endYm.split('-').map(Number);
+  while (y < ey || (y === ey && m <= em)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (++m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+
+const topAptsCache = new Map<string, TopAptsResponse>();
+
+export interface TopAptChartItem {
+  aptNm: string;
+  dong: string;
+  months: { ts: number; price: number }[];
+}
+
+export interface TopAptTableItem {
+  aptNm: string;
+  dong: string;
+  latestPrice: number;
+}
+
+export interface TopAptsResponse {
+  chart: TopAptChartItem[];
+  table: TopAptTableItem[];
+}
+
+export function getTopAptsByGu(gu: string): TopAptsResponse {
+  if (topAptsCache.has(gu)) return topAptsCache.get(gu)!;
+  const index = loadTrades();
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const allMonths = generateMonths('2020-01', currentYm);
+
+  const aptRawMap = new Map<string, { aptNm: string; dong: string; data: Map<string, number[]> }>();
+
+  for (const [key, trades] of index.entries()) {
+    const parts = key.split('|');
+    if (parts.length < 3 || parts[1] !== gu) continue;
+    const aptNm = parts[0];
+    const dong = parts[2];
+    const aptKey = `${aptNm}|${dong}`;
+
+    if (!aptRawMap.has(aptKey)) aptRawMap.set(aptKey, { aptNm, dong, data: new Map() });
+    const { data } = aptRawMap.get(aptKey)!;
+
+    for (const t of trades) {
+      if (!t.date || t.area <= 0 || t.price <= 0 || isNaN(t.area) || isNaN(t.price)) continue;
+      const ym = t.date.slice(0, 7);
+      if (!data.has(ym)) data.set(ym, []);
+      data.get(ym)!.push(t.price / t.area);
+    }
+  }
+
+  const summaries: (TopAptTableItem & { months: { ts: number; price: number }[] })[] = [];
+
+  for (const { aptNm, dong, data } of aptRawMap.values()) {
+    if (data.size === 0) continue;
+
+    const avgByYm = new Map<string, number>();
+    for (const [ym, vals] of data.entries()) {
+      avgByYm.set(ym, vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+
+    const knownYms = [...avgByYm.keys()].sort();
+    const firstYm = knownYms[0];
+    const lastYm = knownYms[knownYms.length - 1];
+
+    const months: { ts: number; price: number }[] = [];
+    for (const ym of allMonths) {
+      if (ym < firstYm || ym > lastYm) continue;
+      const ts = new Date(ym + '-01').getTime();
+      if (avgByYm.has(ym)) {
+        months.push({ ts, price: avgByYm.get(ym)! });
+      } else {
+        const prevYm = knownYms.filter(k => k < ym).pop() ?? null;
+        const nextYm = knownYms.find(k => k > ym) ?? null;
+        if (prevYm && nextYm) {
+          const t0 = new Date(prevYm + '-01').getTime();
+          const t1 = new Date(nextYm + '-01').getTime();
+          const p0 = avgByYm.get(prevYm)!;
+          const p1 = avgByYm.get(nextYm)!;
+          months.push({ ts, price: p0 + ((ts - t0) / (t1 - t0)) * (p1 - p0) });
+        }
+      }
+    }
+
+    if (months.length === 0) continue;
+    summaries.push({ aptNm, dong, latestPrice: avgByYm.get(lastYm)!, months });
+  }
+
+  summaries.sort((a, b) => b.latestPrice - a.latestPrice);
+
+  const result: TopAptsResponse = {
+    chart: summaries.slice(0, 20).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),
+    table: summaries.map(({ aptNm, dong, latestPrice }) => ({ aptNm, dong, latestPrice })),
+  };
+  topAptsCache.set(gu, result);
+  return result;
 }
 
 export interface UnusualTradeRecord {
@@ -199,7 +310,10 @@ export interface UnusualTradeRecord {
   prevPrice: number;
 }
 
+const unusualTradesCache = new Map<string, UnusualTradeRecord[]>();
+
 export function getUnusualTradesByGu(gu: string): UnusualTradeRecord[] {
+  if (unusualTradesCache.has(gu)) return unusualTradesCache.get(gu)!;
   const index = loadTrades();
 
   let latestDateStr = '';
@@ -259,5 +373,7 @@ export function getUnusualTradesByGu(gu: string): UnusualTradeRecord[] {
     }
   }
 
-  return results.sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = results.sort((a, b) => b.date.localeCompare(a.date));
+  unusualTradesCache.set(gu, sorted);
+  return sorted;
 }
