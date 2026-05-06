@@ -29,9 +29,14 @@ const MAX_TS = Date.now();
 const LINE_COLORS = [
   '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
   '#0891b2', '#be185d', '#65a30d', '#c2410c', '#0f766e',
-  '#9333ea', '#b45309', '#0284c7', '#15803d', '#b91c1c',
-  '#1d4ed8', '#991b1b', '#166534', '#92400e', '#5b21b6',
 ];
+
+const RANK_BG: Record<number, string> = {
+  0: '#a7f3d0', // 1등 에메랄드
+  1: '#fde68a', // 2등 금색
+  2: '#e2e8f0', // 3등 은색
+  3: '#fed7aa', // 4등 동색
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -348,13 +353,13 @@ export default function TopAptsPage() {
                         <tr key={`${apt.aptNm}|${apt.dong}`}
                           style={{
                             borderBottom: '1px solid #eee',
-                            background: i < 20 ? `${LINE_COLORS[i % LINE_COLORS.length]}18` : undefined,
+                            background: RANK_BG[i] ?? undefined,
                           }}>
                           <td style={{ padding: '6px 8px', color: '#888', fontSize: 12, width: 44 }}>{i + 1}</td>
                           <td style={{ padding: '6px 8px', fontWeight: i < 3 ? 700 : 400 }}>{apt.aptNm}</td>
                           <td style={{ padding: '6px 8px', color: '#555' }}>{apt.dong}</td>
                           <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                            {apt.latestPrice.toFixed(1)}
+                            {Math.round(apt.latestPrice)}
                           </td>
                         </tr>
                       ))}
@@ -380,7 +385,7 @@ export default function TopAptsPage() {
             {tooltip.aptNm} ({tooltip.dong})
           </div>
           <div>{tsToLabel(tooltip.ts)}</div>
-          <div>{tooltip.price.toFixed(1)} 만원/㎡</div>
+          <div>{Math.round(tooltip.price)} 만원/㎡</div>
         </div>
       )}
     </div>

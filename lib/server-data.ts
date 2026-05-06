@@ -228,9 +228,6 @@ export interface TopAptsResponse {
 export function getTopAptsByGu(gu: string): TopAptsResponse {
   if (topAptsCache.has(gu)) return topAptsCache.get(gu)!;
   const index = loadTrades();
-  const now = new Date();
-  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const allMonths = generateMonths('2020-01', currentYm);
 
   const aptRawMap = new Map<string, { aptNm: string; dong: string; data: Map<string, number[]> }>();
 
@@ -252,6 +249,15 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     }
   }
 
+  // 구 전체에서 가장 최신 월을 기준 월로 삼아 모든 아파트를 동일 시점에서 비교
+  let globalLatestYm = '2020-01';
+  for (const { data } of aptRawMap.values()) {
+    for (const ym of data.keys()) {
+      if (ym > globalLatestYm) globalLatestYm = ym;
+    }
+  }
+  const allMonths = generateMonths('2020-01', globalLatestYm);
+
   const summaries: (TopAptTableItem & { months: { ts: number; price: number }[] })[] = [];
 
   for (const { aptNm, dong, data } of aptRawMap.values()) {
@@ -265,14 +271,19 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     const knownYms = [...avgByYm.keys()].sort();
     const firstYm = knownYms[0];
     const lastYm = knownYms[knownYms.length - 1];
+    const lastKnownPrice = avgByYm.get(lastYm)!;
 
     const months: { ts: number; price: number }[] = [];
     for (const ym of allMonths) {
-      if (ym < firstYm || ym > lastYm) continue;
+      if (ym < firstYm) continue;
       const ts = new Date(ym + '-01').getTime();
       if (avgByYm.has(ym)) {
         months.push({ ts, price: avgByYm.get(ym)! });
+      } else if (ym > lastYm) {
+        // 마지막 실거래 이후: 평탄 외삽
+        months.push({ ts, price: lastKnownPrice });
       } else {
+        // 중간 구간: 선형 보간
         const prevYm = knownYms.filter(k => k < ym).pop() ?? null;
         const nextYm = knownYms.find(k => k > ym) ?? null;
         if (prevYm && nextYm) {
@@ -286,13 +297,15 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     }
 
     if (months.length === 0) continue;
-    summaries.push({ aptNm, dong, latestPrice: avgByYm.get(lastYm)!, months });
+    // 기준 월 가격: 실거래 있으면 그 값, 없으면 마지막 실거래 값(평탄 외삽)
+    const referencePrice = avgByYm.get(globalLatestYm) ?? lastKnownPrice;
+    summaries.push({ aptNm, dong, latestPrice: referencePrice, months });
   }
 
   summaries.sort((a, b) => b.latestPrice - a.latestPrice);
 
   const result: TopAptsResponse = {
-    chart: summaries.slice(0, 20).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),
+    chart: summaries.slice(0, 10).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),
     table: summaries.map(({ aptNm, dong, latestPrice }) => ({ aptNm, dong, latestPrice })),
   };
   topAptsCache.set(gu, result);
