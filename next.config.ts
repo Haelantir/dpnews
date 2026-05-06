@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
     "/api/areas": ["./data/**"],
     "/api/trades": ["./data/**"],
   },
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'cdn.sanity.io' },
+    ],
+  },
 };
 
 export default nextConfig;
