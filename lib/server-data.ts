@@ -206,6 +206,8 @@ function generateMonths(startYm: string, endYm: string): string[] {
   return months;
 }
 
+export type AreaType = '59' | '84' | '100+';
+
 const topAptsCache = new Map<string, TopAptsResponse>();
 
 export interface TopAptChartItem {
@@ -225,9 +227,13 @@ export interface TopAptsResponse {
   table: TopAptTableItem[];
 }
 
-export function getTopAptsByGu(gu: string): TopAptsResponse {
-  if (topAptsCache.has(gu)) return topAptsCache.get(gu)!;
+export function getTopAptsByGu(gu: string, areaType: AreaType): TopAptsResponse {
+  const cacheKey = `${gu}|${areaType}`;
+  if (topAptsCache.has(cacheKey)) return topAptsCache.get(cacheKey)!;
   const index = loadTrades();
+
+  const areaMin = areaType === '59' ? 59 * 0.9 : areaType === '84' ? 84 * 0.9 : 100;
+  const areaMax = areaType === '59' ? 59 * 1.1 : areaType === '84' ? 84 * 1.1 : Infinity;
 
   const aptRawMap = new Map<string, { aptNm: string; dong: string; data: Map<string, number[]> }>();
 
@@ -243,6 +249,7 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
 
     for (const t of trades) {
       if (!t.date || t.area <= 0 || t.price <= 0 || isNaN(t.area) || isNaN(t.price)) continue;
+      if (t.area < areaMin || t.area > areaMax) continue;
       const ym = t.date.slice(0, 7);
       if (!data.has(ym)) data.set(ym, []);
       data.get(ym)!.push(t.price / t.area);
@@ -319,7 +326,7 @@ export function getTopAptsByGu(gu: string): TopAptsResponse {
     chart: summaries.slice(0, 10).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),
     table: summaries.map(({ aptNm, dong, latestPrice }) => ({ aptNm, dong, latestPrice })),
   };
-  topAptsCache.set(gu, result);
+  topAptsCache.set(cacheKey, result);
   return result;
 }
 

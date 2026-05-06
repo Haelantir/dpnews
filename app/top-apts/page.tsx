@@ -8,12 +8,16 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+type AreaType = '59' | '84' | '100+';
+
 interface FilterData { 구s: string[]; }
 interface MonthPoint { ts: number; price: number; }
 interface ChartApt { aptNm: string; dong: string; months: MonthPoint[]; }
 interface TableApt { aptNm: string; dong: string; latestPrice: number; }
 interface TopAptsData { chart: ChartApt[]; table: TableApt[]; }
 interface TooltipState { x: number; y: number; price: number; ts: number; aptNm: string; dong: string; color: string; }
+
+const AREA_LABELS: Record<AreaType, string> = { '59': '59㎡', '84': '84㎡', '100+': '100㎡ 이상' };
 
 interface ChartLine {
   key: string; color: string;
@@ -196,6 +200,7 @@ function RangeSlider({ startTs, endTs, onChange }: {
 export default function TopAptsPage() {
   const [filterData, setFilterData] = useState<FilterData | null>(null);
   const [selectedGu, setSelectedGu] = useState('');
+  const [areaType, setAreaType] = useState<AreaType>('84');
   const [loading, setLoading] = useState(false);
   const [aptData, setAptData] = useState<TopAptsData | null>(null);
   const [sliderStart, setSliderStart] = useState(MIN_TS);
@@ -209,13 +214,11 @@ export default function TopAptsPage() {
     fetch('/api/filter-data').then(r => r.json()).then(setFilterData);
   }, []);
 
-  const handleGuSelect = async (gu: string) => {
-    if (gu === selectedGu) return;
-    setSelectedGu(gu);
+  const fetchData = useCallback(async (gu: string, at: AreaType) => {
     setAptData(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/top-apts?gu=${encodeURIComponent(gu)}`);
+      const res = await fetch(`/api/top-apts?gu=${encodeURIComponent(gu)}&areaType=${at}`);
       const data: TopAptsData = await res.json();
       setAptData(data);
       setSliderStart(MIN_TS); setSliderEnd(MAX_TS);
@@ -223,6 +226,18 @@ export default function TopAptsPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const handleGuSelect = (gu: string) => {
+    if (gu === selectedGu) return;
+    setSelectedGu(gu);
+    fetchData(gu, areaType);
+  };
+
+  const handleAreaType = (at: AreaType) => {
+    if (at === areaType) return;
+    setAreaType(at);
+    if (selectedGu) fetchData(selectedGu, at);
   };
 
   const handleRangeChange = useCallback((s: number, e: number) => {
@@ -261,7 +276,7 @@ export default function TopAptsPage() {
         <p style={{ fontSize: 13, color: '#999', margin: 0 }}>이 지역의 평당 단가로 계산된 대장 순위입니다.</p>
       </div>
 
-      <div className="gu-grid">
+      <div className="gu-grid" style={{ marginBottom: 8 }}>
         {구s.map(gu => (
           <button
             key={gu}
@@ -276,6 +291,25 @@ export default function TopAptsPage() {
             }}
           >{gu}</button>
         ))}
+      </div>
+
+      {/* 면적 선택 버튼 — 구 그리드 왼쪽 3칸에 정렬 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 28 }}>
+        {(['59', '84', '100+'] as AreaType[]).map(at => (
+          <button
+            key={at}
+            onClick={() => handleAreaType(at)}
+            style={{
+              height: 36, padding: '0 8px',
+              border: `1px solid ${areaType === at ? '#111' : '#aaa'}`,
+              background: areaType === at ? '#111' : '#fff',
+              color: areaType === at ? '#fff' : '#555',
+              fontSize: 13, cursor: 'pointer', appearance: 'none',
+              fontFamily: 'inherit', fontWeight: areaType === at ? 700 : 400,
+            }}
+          >{AREA_LABELS[at]}</button>
+        ))}
+        <div /><div />
       </div>
 
       {selectedGu && (
