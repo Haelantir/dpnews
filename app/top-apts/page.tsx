@@ -218,7 +218,7 @@ export default function TopAptsPage() {
     setAptData(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/top-apts?gu=${encodeURIComponent(gu)}&areaType=${at}`);
+      const res = await fetch(`/api/top-apts?gu=${encodeURIComponent(gu)}&areaType=${encodeURIComponent(at)}`);
       const data: TopAptsData = await res.json();
       setAptData(data);
       setSliderStart(MIN_TS); setSliderEnd(MAX_TS);
