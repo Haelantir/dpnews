@@ -1,23 +1,97 @@
 /* ── Base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* ── Navbar ───────────────────────────────────────────────────────── */
+.navbar-root {
+  background: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.navbar-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 10px 1.5rem 0;
+}
+.navbar-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.navbar-logo2 {
+  height: 108px;
+  width: auto;
+}
+.navbar-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid #ccc;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.navbar-tabs::-webkit-scrollbar { display: none; }
+.navbar-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px 7px;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: none;
+  color: #888;
+  background: #f3f3f3;
+  border: 1px solid #ccc;
+  border-radius: 4px 4px 0 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+.navbar-tab:hover:not(.active) {
+  background: #ebebeb;
+  color: #555;
+}
+.navbar-tab.active {
+  background: #fff;
+  color: #111;
+  font-weight: 600;
+  border-bottom: 1px solid #fff;
+  margin-bottom: -1px;
+  padding-bottom: 8px;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────── */
+.site-footer {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 1.5rem 32px;
+  border-top: 1px solid #eee;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.site-footer p {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #aaa;
+  line-height: 1.6;
+}
+.site-footer p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .site-footer {
+    padding: 20px 1rem 28px;
+  }
+  .site-footer p {
+    font-size: 10px;
+  }
+}
+
 /* ── Page container ───────────────────────────────────────────────── */
 .page-wrap {
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
   font-family: system-ui, -apple-system, sans-serif;
-}
-
-/* ── Main page button grid ────────────────────────────────────────── */
-.main-btn-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 160px);
-  gap: 12px;
-}
-.main-btn {
-  width: 160px;
-  height: 80px;
 }
 
 /* ── 4-column filter dropdowns ────────────────────────────────────── */
@@ -69,21 +143,35 @@
   padding-left: 80px;
 }
 
+/* ── Top-apts table column widths ─────────────────────────────────── */
+.top-apts-table .col-rank  { width: 44px; }
+.top-apts-table .col-dong  { width: 80px; }
+.top-apts-table .col-price { width: 90px; }
+
 /* ── Mobile ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .page-wrap {
-    padding: 1.25rem 1rem;
+  /* Navbar */
+  .navbar-inner {
+    padding: 8px 1rem 0;
+  }
+  .navbar-logo2 {
+    height: 78px;
+  }
+  .navbar-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .navbar-tab {
+    font-size: 12px;
+    padding: 5px 10px 6px;
+  }
+  .navbar-tab.active {
+    padding-bottom: 7px;
   }
 
-  /* Main: 1-col, 75vw centered */
-  .main-btn-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    justify-items: center;
-  }
-  .main-btn {
-    width: 75vw;
-    height: 52px;
+  /* Page */
+  .page-wrap {
+    padding: 1.25rem 1rem;
   }
 
   /* Filters: 2x2 */
@@ -127,4 +215,16 @@
   .hidden-mobile {
     display: none;
   }
+
+  /* Top-apts table: compact on mobile */
+  .top-apts-table {
+    font-size: 12px;
+  }
+  .top-apts-table th,
+  .top-apts-table td {
+    padding: 5px 5px;
+  }
+  .top-apts-table .col-rank  { width: 28px; }
+  .top-apts-table .col-dong  { width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 64px; }
+  .top-apts-table .col-price { width: 52px; white-space: nowrap; }
 }
