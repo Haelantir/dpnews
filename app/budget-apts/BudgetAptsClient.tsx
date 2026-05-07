@@ -274,17 +274,24 @@ export default function BudgetAptsClient() {
   };
 
   // Per-gu affordability (immediate — drives button colors)
+  // colorRatio = clamp((budget/median - 0.8) / 0.7, 0, 1)
+  // median at 80% budget → red, median × 1.5 budget → fully green
   const guStats = useMemo(() => {
     const maxPrice = isFinite(maxP) ? Math.round(maxP * 10000) : Infinity;
-    const m = new Map<string, { total: number; inBudget: number }>();
+    const pricesByGu = new Map<string, number[]>();
     for (const d of tableData) {
-      if (!m.has(d.gu)) m.set(d.gu, { total: 0, inBudget: 0 });
-      const s = m.get(d.gu)!;
-      s.total++;
-      if (d.price <= maxPrice) s.inBudget++;
+      if (!pricesByGu.has(d.gu)) pricesByGu.set(d.gu, []);
+      pricesByGu.get(d.gu)!.push(d.price);
     }
-    return m;
-  }, [tableData, minP, maxP]);
+    const result = new Map<string, number>();
+    for (const [gu, prices] of pricesByGu) {
+      prices.sort((a, b) => a - b);
+      const median = prices[Math.floor(prices.length / 2)];
+      const affordRatio = maxPrice / median;
+      result.set(gu, Math.min(1, Math.max(0, (affordRatio - 0.8) / 0.7)));
+    }
+    return result;
+  }, [tableData, maxP]);
 
   // Filtered data (deferred — drives table)
   const filteredData = useMemo(() => {
@@ -393,8 +400,7 @@ export default function BudgetAptsClient() {
       {/* Gu buttons */}
       <div className="gu-grid" style={{ marginBottom: 20 }}>
         {SEOUL_GUS.map(gu => {
-          const stat = guStats.get(gu);
-          const ratio = (stat && stat.total > 0) ? stat.inBudget / stat.total : -1;
+          const ratio = guStats.has(gu) ? guStats.get(gu)! : -1;
           const isSelected = selectedGus.has(gu);
           let bg: string;
           let fg: string;
