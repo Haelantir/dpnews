@@ -275,14 +275,13 @@ export default function BudgetAptsClient() {
 
   // Per-gu affordability (immediate — drives button colors)
   const guStats = useMemo(() => {
-    const minPrice = Math.round(minP * 10000);
     const maxPrice = isFinite(maxP) ? Math.round(maxP * 10000) : Infinity;
     const m = new Map<string, { total: number; inBudget: number }>();
     for (const d of tableData) {
       if (!m.has(d.gu)) m.set(d.gu, { total: 0, inBudget: 0 });
       const s = m.get(d.gu)!;
       s.total++;
-      if (d.price >= minPrice && d.price <= maxPrice) s.inBudget++;
+      if (d.price <= maxPrice) s.inBudget++;
     }
     return m;
   }, [tableData, minP, maxP]);
