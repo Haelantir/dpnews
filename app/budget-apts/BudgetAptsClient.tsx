@@ -347,7 +347,7 @@ export default function BudgetAptsClient() {
           예산에 맞는 아파트
         </h1>
         <p style={{ fontSize: 13, color: '#999', margin: 0 }}>
-          내 돈으로 갈 수 있는 지역일수록 초록색으로 표시됩니다. 모든 면적은 전용면적입니다.
+          내 돈으로 갈 수 있는 지역일수록 초록색으로 표시됩니다. 여러 개의 구를 클릭해서 범위를 좁힐 수도 있어요. 모든 면적은 전용면적입니다.
         </p>
       </div>
 
