@@ -50,6 +50,21 @@
   background: #ebebeb;
   color: #555;
 }
+.nav-new-badge {
+  position: relative;
+  top: -6px;
+  margin-left: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #dc2626;
+  letter-spacing: 0.02em;
+  animation: nav-blink 1.4s ease-in-out infinite;
+  will-change: opacity;
+}
+@keyframes nav-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
+}
 .navbar-tab.active {
   background: #fff;
   color: #111;
