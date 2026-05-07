@@ -77,8 +77,7 @@ function fmtPrice(만원: number): string {
 }
 
 function fmtDate(d: string): string {
-  const p = d.split('-');
-  return p.length >= 3 ? `${Number(p[1])}/${Number(p[2])} 거래됨` : d;
+  return d.length >= 10 ? d.slice(0, 10) : d;
 }
 
 // ── Gu affordability color ────────────────────────────────────────────────────
