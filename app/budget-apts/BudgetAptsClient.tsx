@@ -476,7 +476,16 @@ export default function BudgetAptsClient() {
             {displayData.map((d, i) => (
               <tr key={`${d.aptNm}|${d.gu}|${d.dong}|${i}`}
                 style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '6px 8px' }}>{d.aptNm}</td>
+                <td style={{ padding: '6px 8px' }}>
+                  <a
+                    href={`/trades?gu=${encodeURIComponent(d.gu)}&dong=${encodeURIComponent(d.dong)}&apt=${encodeURIComponent(d.aptNm)}&area=${d.area}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#111', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                  >
+                    {d.aptNm}
+                  </a>
+                </td>
                 <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555' }}>{d.gu}</td>
                 <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555' }}>{d.dong}</td>
                 <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#555' }}>{d.area}㎡</td>
