@@ -163,6 +163,22 @@
 .top-apts-table .col-dong  { width: 80px; }
 .top-apts-table .col-price { width: 90px; }
 
+/* ── Budget table ─────────────────────────────────────────────────── */
+.budget-table th,
+.budget-table td {
+  padding: 6px 8px;
+}
+
+@media (max-width: 640px) {
+  .budget-table {
+    font-size: 12px;
+  }
+  .budget-table th,
+  .budget-table td {
+    padding: 5px 5px;
+  }
+}
+
 /* ── Seoul ranking search grid (3-col) ───────────────────────────── */
 .seoul-rank-search-grid {
   display: grid;

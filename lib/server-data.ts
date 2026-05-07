@@ -330,6 +330,56 @@ export function getTopAptsByGu(gu: string, areaType: AreaType): TopAptsResponse 
   return result;
 }
 
+// ── Budget apts (latest trade per apt per area type) ─────────────────────────
+
+export interface BudgetAptItem {
+  aptNm: string;
+  gu: string;
+  dong: string;
+  area: number;   // Math.floor(actual area)
+  price: number;  // 만원
+  date: string;   // YYYY-MM-DD
+}
+
+const budgetAptsCache = new Map<AreaType, BudgetAptItem[]>();
+
+export function getBudgetApts(areaType: AreaType): BudgetAptItem[] {
+  if (budgetAptsCache.has(areaType)) return budgetAptsCache.get(areaType)!;
+
+  const index = loadTrades();
+  const areaMin = areaType === '59' ? 59 * 0.9 : areaType === '84' ? 84 * 0.9 : 100;
+  const areaMax = areaType === '59' ? 59 * 1.1 : areaType === '84' ? 84 * 1.1 : Infinity;
+
+  const result: BudgetAptItem[] = [];
+
+  for (const [key, trades] of index.entries()) {
+    const parts = key.split('|');
+    if (parts.length < 3) continue;
+    const aptNm = parts[0];
+    const gu = parts[1];
+    const dong = parts[2];
+
+    let latest: TradeRecord | null = null;
+    for (const t of trades) {
+      if (!t.date || t.price <= 0 || isNaN(t.area) || isNaN(t.price)) continue;
+      if (t.area < areaMin || t.area > areaMax) continue;
+      if (!latest || t.date > latest.date) latest = t;
+    }
+    if (!latest) continue;
+
+    result.push({
+      aptNm, gu, dong,
+      area: Math.floor(latest.area),
+      price: latest.price,
+      date: latest.date,
+    });
+  }
+
+  result.sort((a, b) => b.price - a.price);
+  budgetAptsCache.set(areaType, result);
+  return result;
+}
+
 // ── Seoul-wide ranking ───────────────────────────────────────────────────────
 
 export interface SeoulRankItem {
