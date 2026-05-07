@@ -7,6 +7,7 @@ const TABS = [
   { label: '우리동네 신고가', href: '/new-highs' },
   { label: '우리동네 특이거래', href: '/unusual-trades' },
   { label: '지역별 대장아파트', href: '/top-apts' },
+  { label: '서울 아파트값 순위', href: '/seoul-ranking' },
   { label: '공지사항', href: '/notices' },
 ];
 

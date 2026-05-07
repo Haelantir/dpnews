@@ -148,6 +148,19 @@
 .top-apts-table .col-dong  { width: 80px; }
 .top-apts-table .col-price { width: 90px; }
 
+/* ── Seoul ranking search grid (3-col) ───────────────────────────── */
+.seoul-rank-search-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* ── Seoul ranking table column widths ───────────────────────────── */
+.seoul-rank-table .srt-rank  { width: 44px; }
+.seoul-rank-table .srt-gu   { width: 68px; }
+.seoul-rank-table .srt-dong  { width: 72px; }
+.seoul-rank-table .srt-price { width: 88px; }
+
 /* ── Mobile ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   /* Navbar */
@@ -227,4 +240,22 @@
   .top-apts-table .col-rank  { width: 28px; }
   .top-apts-table .col-dong  { width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 64px; }
   .top-apts-table .col-price { width: 52px; white-space: nowrap; }
+
+  /* Seoul ranking search: 2-col on mobile */
+  .seoul-rank-search-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Seoul ranking table: compact on mobile */
+  .seoul-rank-table {
+    font-size: 12px;
+  }
+  .seoul-rank-table th,
+  .seoul-rank-table td {
+    padding: 5px 5px;
+  }
+  .seoul-rank-table .srt-rank  { width: 28px; }
+  .seoul-rank-table .srt-gu   { width: 52px; }
+  .seoul-rank-table .srt-dong  { width: 48px; }
+  .seoul-rank-table .srt-price { width: 48px; }
 }

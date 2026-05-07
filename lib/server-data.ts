@@ -330,6 +330,85 @@ export function getTopAptsByGu(gu: string, areaType: AreaType): TopAptsResponse 
   return result;
 }
 
+// ── Seoul-wide ranking ───────────────────────────────────────────────────────
+
+export interface SeoulRankItem {
+  aptNm: string;
+  gu: string;
+  dong: string;
+  latestPrice: number;
+}
+
+const seoulRankingCache = new Map<AreaType, SeoulRankItem[]>();
+
+export function getSeoulRanking(areaType: AreaType): SeoulRankItem[] {
+  if (seoulRankingCache.has(areaType)) return seoulRankingCache.get(areaType)!;
+
+  const index = loadTrades();
+  const areaMin = areaType === '59' ? 59 * 0.9 : areaType === '84' ? 84 * 0.9 : 100;
+  const areaMax = areaType === '59' ? 59 * 1.1 : areaType === '84' ? 84 * 1.1 : Infinity;
+
+  type AptEntry = {
+    aptNm: string; gu: string; dong: string;
+    avgByYm: Map<string, number>;
+    lastYm: string;
+  };
+
+  const aptMap = new Map<string, AptEntry>();
+  let globalLatestYm = '2020-01';
+
+  for (const [key, trades] of index.entries()) {
+    const parts = key.split('|');
+    if (parts.length < 3) continue;
+    const aptNm = parts[0];
+    const gu = parts[1];
+    const dong = parts[2];
+
+    const rawByYm = new Map<string, number[]>();
+    for (const t of trades) {
+      if (!t.date || t.area <= 0 || t.price <= 0 || isNaN(t.area) || isNaN(t.price)) continue;
+      if (t.area < areaMin || t.area > areaMax) continue;
+      const ym = t.date.slice(0, 7);
+      if (!rawByYm.has(ym)) rawByYm.set(ym, []);
+      rawByYm.get(ym)!.push(t.price / t.area);
+    }
+    if (rawByYm.size === 0) continue;
+
+    const avgByYm = new Map<string, number>();
+    for (const [ym, vals] of rawByYm.entries()) {
+      avgByYm.set(ym, vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+    const yms = [...avgByYm.keys()].sort();
+    const lastYm = yms[yms.length - 1];
+    if (lastYm > globalLatestYm) globalLatestYm = lastYm;
+    aptMap.set(key, { aptNm, gu, dong, avgByYm, lastYm });
+  }
+
+  const [gly, glm] = globalLatestYm.split('-').map(Number);
+  const monthsStaleOf = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    return (gly - y) * 12 + (glm - m);
+  };
+
+  type Summary = SeoulRankItem & { stale: boolean };
+  const summaries: Summary[] = [];
+
+  for (const { aptNm, gu, dong, avgByYm, lastYm } of aptMap.values()) {
+    const stale = monthsStaleOf(lastYm) > 12;
+    const referencePrice = avgByYm.get(globalLatestYm) ?? avgByYm.get(lastYm)!;
+    summaries.push({ aptNm, gu, dong, latestPrice: referencePrice, stale });
+  }
+
+  summaries.sort((a, b) => {
+    if (a.stale !== b.stale) return a.stale ? 1 : -1;
+    return b.latestPrice - a.latestPrice;
+  });
+
+  const result = summaries.map(({ aptNm, gu, dong, latestPrice }) => ({ aptNm, gu, dong, latestPrice }));
+  seoulRankingCache.set(areaType, result);
+  return result;
+}
+
 export interface UnusualTradeRecord {
   aptNm: string;
   gu: string;
