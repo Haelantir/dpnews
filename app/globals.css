@@ -7,6 +7,7 @@
   position: sticky;
   top: 0;
   z-index: 50;
+  transform: translateZ(0); /* GPU 레이어 고정 — 스크롤 시 1~2px 떨림 방지 */
 }
 .navbar-inner {
   max-width: 800px;
@@ -27,10 +28,8 @@
   align-items: flex-end;
   gap: 2px;
   border-bottom: 1px solid #ccc;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
 }
-.navbar-tabs::-webkit-scrollbar { display: none; }
 .navbar-tab {
   display: inline-flex;
   align-items: center;
@@ -69,9 +68,7 @@
   background: #fff;
   color: #111;
   font-weight: 600;
-  border-bottom: 1px solid #fff;
-  margin-bottom: -1px;
-  padding-bottom: 8px;
+  border-bottom: 2px solid #111;
 }
 
 /* ── Footer ───────────────────────────────────────────────────────── */
@@ -201,16 +198,9 @@
   .navbar-logo2 {
     height: 78px;
   }
-  .navbar-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
   .navbar-tab {
     font-size: 11px;
     padding: 5px 8px 6px;
-  }
-  .navbar-tab.active {
-    padding-bottom: 7px;
   }
 
   /* Page */
