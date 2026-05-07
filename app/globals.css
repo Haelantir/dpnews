@@ -202,12 +202,12 @@
     height: 78px;
   }
   .navbar-tabs {
-    flex-wrap: wrap;
-    overflow-x: visible;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
   .navbar-tab {
-    font-size: 12px;
-    padding: 5px 10px 6px;
+    font-size: 11px;
+    padding: 5px 8px 6px;
   }
   .navbar-tab.active {
     padding-bottom: 7px;
