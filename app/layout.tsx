@@ -11,7 +11,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://aptwar.vercel.app'),
+  metadataBase: new URL('https://seoulowner.co.kr'),
   title: '서울집주인',
   description: '서울 아파트 실거래가, 신고가, 특이거래, 지역별 대장아파트 정보',
   openGraph: {
