@@ -316,11 +316,7 @@ export function getTopAptsByGu(gu: string, areaType: AreaType): TopAptsResponse 
     summaries.push({ aptNm, dong, latestPrice: referencePrice, months, stale });
   }
 
-  // 최근 거래 아파트 먼저, 그 안에서 가격 DESC / stale은 뒤로
-  summaries.sort((a, b) => {
-    if (a.stale !== b.stale) return a.stale ? 1 : -1;
-    return b.latestPrice - a.latestPrice;
-  });
+  summaries.sort((a, b) => b.latestPrice - a.latestPrice);
 
   const result: TopAptsResponse = {
     chart: summaries.slice(0, 10).map(({ aptNm, dong, months }) => ({ aptNm, dong, months })),
@@ -449,10 +445,7 @@ export function getSeoulRanking(areaType: AreaType): SeoulRankItem[] {
     summaries.push({ aptNm, gu, dong, latestPrice: referencePrice, stale });
   }
 
-  summaries.sort((a, b) => {
-    if (a.stale !== b.stale) return a.stale ? 1 : -1;
-    return b.latestPrice - a.latestPrice;
-  });
+  summaries.sort((a, b) => b.latestPrice - a.latestPrice);
 
   const result = summaries.map(({ aptNm, gu, dong, latestPrice }) => ({ aptNm, gu, dong, latestPrice }));
   seoulRankingCache.set(areaType, result);
