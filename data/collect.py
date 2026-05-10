@@ -213,13 +213,16 @@ def main():
     checkpoint = load_checkpoint()
 
     if existing_years and not checkpoint:
-        # 일반 증분 업데이트
-        latest_year = max(existing_years)
-        df_latest = pd.read_csv(csv_path(latest_year), parse_dates=["계약일"])
-        last_ym = df_latest["계약일"].max().strftime("%Y%m")
-        fetch_months = months_range(last_ym, end_ym)
-        cutoff = pd.Timestamp(last_ym + "01")
-        print(f"기존 데이터({existing_years}) 발견. {last_ym}월부터 재조회 ({len(fetch_months)}개월)...")
+        # 오늘 기준 3개월 전부터 재조회 (늦은 신고 누락 방지)
+        m = today.month - 3
+        y = today.year
+        if m <= 0:
+            m += 12
+            y -= 1
+        start_ym = f"{y}{m:02d}"
+        fetch_months = months_range(start_ym, end_ym)
+        cutoff = pd.Timestamp(start_ym + "01")
+        print(f"기존 데이터({existing_years}) 발견. {start_ym}월부터 재조회 ({len(fetch_months)}개월, 3개월 롤링)...")
 
         # 재조회 범위 연도의 기존 데이터에서 해당 월 이후 제거
         affected_years = sorted(set(
