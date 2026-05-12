@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import areasIndex from '@/lib/areas-index.json';
 import { getTradesRange, getCoords } from '@/lib/server-data';
 
