@@ -264,6 +264,13 @@ def main():
 
     print("\n완료")
 
+    # 지도 dot 데이터 갱신
+    import subprocess, sys as _sys
+    _map_script = os.path.join(DATA_DIR, 'gen-apt-map.py')
+    if os.path.exists(_map_script):
+        print("\n지도 데이터 갱신 중...")
+        subprocess.run([_sys.executable, _map_script], check=False)
+
 
 if __name__ == "__main__":
     main()

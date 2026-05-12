@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from 'react';
+import { SeoulMapDots } from '@/app/components/SeoulMapDots';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -350,6 +351,9 @@ export default function BudgetAptsClient() {
           내 돈으로 갈 수 있는 지역일수록 초록색으로 표시됩니다. 여러 개의 구를 클릭해서 범위를 좁힐 수도 있어요. 모든 면적은 전용면적입니다.
         </p>
       </div>
+
+      {/* Seoul map dots */}
+      <SeoulMapDots minP={minP} maxP={maxP} areaType={areaType} />
 
       {/* Budget slider */}
       <div style={{ marginBottom: 24 }}>
