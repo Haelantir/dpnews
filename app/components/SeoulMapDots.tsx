@@ -10,6 +10,7 @@ interface AptDot {
   '59'?: [number, string]; '84'?: [number, string]; '100'?: [number, string];
 }
 interface AptMapData { gen: string; d: AptDot[]; }
+interface RiverData { outer: number[][][]; inner: number[][][]; }
 
 // ── Projection (Seoul GeoJSON bounds) ─────────────────────────────────────────
 const LNG_MIN = 126.767, LNG_MAX = 127.185;
@@ -44,6 +45,9 @@ function featureToPath(geom: { type: string; coordinates: any }): string {
     return (geom.coordinates as number[][][][]).flatMap((p: number[][][]) => p.map(ringToPath)).join('');
   return '';
 }
+function ringsToPath(rings: number[][][]): string {
+  return rings.map(ringToPath).join('');
+}
 
 // ── Color ──────────────────────────────────────────────────────────────────────
 function dotColor(r: number): string {
@@ -53,7 +57,7 @@ function dotColor(r: number): string {
 
 // ── Module-level cache ─────────────────────────────────────────────────────────
 let geoCached:      { features: any[] } | null = null;
-let riverCached:    { features: any[] } | null = null;
+let riverCached:    RiverData | null = null;
 let dotsCached:     AptMapData | null = null;
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -61,7 +65,7 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
   minP: number; maxP: number; areaType: AreaType;
 }) {
   const [geo,      setGeo]      = useState<typeof geoCached>(geoCached);
-  const [river,    setRiver]    = useState<typeof riverCached>(riverCached);
+  const [river,    setRiver]    = useState<RiverData | null>(riverCached);
   const [mapData,  setMapData]  = useState<AptMapData | null>(dotsCached);
 
   useEffect(() => {
@@ -88,8 +92,12 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
     () => geo?.features.map((f: any) => featureToPath(f.geometry)) ?? [],
     [geo],
   );
-  const riverPaths = useMemo(
-    () => river?.features.map((f: any) => featureToPath(f.geometry)) ?? [],
+  const riverOuterPath = useMemo(
+    () => river ? ringsToPath(river.outer) : '',
+    [river],
+  );
+  const riverInnerPath = useMemo(
+    () => river ? ringsToPath(river.inner) : '',
     [river],
   );
 
@@ -136,6 +144,9 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
         aria-hidden
       >
         <defs>
+          <clipPath id="seoulClip">
+            <rect x={0} y={0} width={VW} height={VH} />
+          </clipPath>
           {Array.from({ length: BUCKETS }, (_, i) => (
             <filter key={i} id={`df${i}`} x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="2.5" />
@@ -148,10 +159,15 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
           <path key={i} d={d} fill="#e8e8e6" stroke="none" />
         ))}
 
-        {/* 한강 (실제 OSM 데이터) */}
-        {riverPaths.map((d, i) => (
-          <path key={`r${i}`} d={d} fill="#aac8e0" stroke="none" />
-        ))}
+        {/* 한강 outer (물) */}
+        {riverOuterPath && (
+          <path d={riverOuterPath} fill="#aac8e0" stroke="none" clipPath="url(#seoulClip)" />
+        )}
+
+        {/* 한강 inner (섬/육지) */}
+        {riverInnerPath && (
+          <path d={riverInnerPath} fill="#e8e8e6" stroke="none" clipPath="url(#seoulClip)" />
+        )}
 
         {/* 구 경계선 */}
         {districtPaths.map((d, i) => (
