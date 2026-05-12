@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   const coords = (filterData as { coords: Coords }).coords;
   const myKey = `${apt}|${gu}|${dong}`;
   const myCoord = coords[myKey];
-  const HEADERS = { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' };
+  const HEADERS = { 'Cache-Control': 'no-store' };
   if (!myCoord || !area) return Response.json([], { headers: HEADERS });
 
   const minArea = area * 0.9;
