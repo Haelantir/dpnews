@@ -31,6 +31,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
+      <head>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6323439373011689" crossOrigin="anonymous" />
+      </head>
       <body>
         <NavBar />
         {children}
@@ -40,12 +43,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <p><Link href="/privacy" style={{ color: '#bbb', textDecoration: 'underline' }}>개인정보처리방침</Link></p>
         </footer>
         <Analytics />
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6323439373011689"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
         {process.env.NEXT_PUBLIC_GA_ID && (
           <>
             <Script
