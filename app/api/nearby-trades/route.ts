@@ -1,6 +1,5 @@
-import filterData from '@/lib/filter-data.json';
 import areasIndex from '@/lib/areas-index.json';
-import { getTradesRange } from '@/lib/server-data';
+import { getTradesRange, getCoords } from '@/lib/server-data';
 
 type Coords = Record<string, { lat: number; lng: number }>;
 
@@ -20,7 +19,7 @@ export async function GET(req: Request) {
   const apt = p.get('apt') ?? '';
   const area = Number(p.get('area') ?? 0);
 
-  const coords = (filterData as { coords: Coords }).coords;
+  const coords = getCoords() as Coords;
   const myKey = `${apt}|${gu}|${dong}`;
   const myCoord = coords[myKey];
   const HEADERS = { 'Cache-Control': 'no-store' };

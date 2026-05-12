@@ -32,6 +32,21 @@ function readCSV(filePath: string): Record<string, string>[] {
   });
 }
 
+// ── Coords (아파트명|구|동 → lat/lng) ────────────────────────────────────────
+
+export type CoordsMap = Record<string, { lat: number; lng: number }>;
+let coordsCache: CoordsMap | null = null;
+
+export function getCoords(): CoordsMap {
+  if (coordsCache) return coordsCache;
+  const rows = readCSV(path.join(DATA_DIR, '서울_아파트_목록_좌표포함.csv'))
+    .filter(r => r['위도'] && r['경도']);
+  coordsCache = Object.fromEntries(
+    rows.map(r => [`${r['아파트명']}|${r['구']}|${r['동']}`, { lat: Number(r['위도']), lng: Number(r['경도']) }])
+  );
+  return coordsCache;
+}
+
 // ── Filter data (구/동/아파트) ──────────────────────────────────────────────
 
 export interface FilterData {

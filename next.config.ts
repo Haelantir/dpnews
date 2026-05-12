@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     "/api/filter-data": ["./data/**"],
     "/api/areas": ["./data/**"],
     "/api/trades": ["./data/**"],
+    "/api/nearby-trades": ["./data/**"],
   },
   images: {
     remotePatterns: [
