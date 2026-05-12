@@ -11,7 +11,8 @@ export async function generateMetadata({ searchParams }: { searchParams: SP }): 
   if (areaType) parts.push(areaType === '100+' ? '100㎡ 이상' : `${areaType}㎡`);
   const sub = parts.length ? ` - ${parts.join(' ')}` : '';
   const title = `서울집주인 - 지역별 대장아파트${sub}`;
-  return { title, openGraph: { title } };
+  const description = '서울 각 구·동의 대장아파트와 최고 실거래가를 확인하세요. 지역별 시세를 이끄는 대표 아파트 정보를 제공합니다.';
+  return { title, description, openGraph: { title, description } };
 }
 
 export default function TopAptsPage() {

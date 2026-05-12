@@ -13,7 +13,8 @@ export async function generateMetadata({ searchParams }: { searchParams: SP }): 
   if (area) parts.push(`${area}㎡`);
   const sub = parts.length ? ` - ${parts.join(' ')}` : '';
   const title = `서울집주인 - 우리동네 실거래가${sub}`;
-  return { title, openGraph: { title } };
+  const description = '서울 각 구·동별 아파트 실거래가를 지도와 차트로 확인하세요. 최근 거래 내역과 가격 추이를 한눈에 볼 수 있습니다.';
+  return { title, description, openGraph: { title, description } };
 }
 
 export default function TradesPage() {

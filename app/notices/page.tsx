@@ -7,7 +7,8 @@ export const revalidate = 60
 
 export const metadata: Metadata = {
   title: '서울집주인 - 공지사항',
-  openGraph: { title: '서울집주인 - 공지사항' },
+  description: '서울집주인 공지사항 및 업데이트 소식을 확인하세요.',
+  openGraph: { title: '서울집주인 - 공지사항', description: '서울집주인 공지사항 및 업데이트 소식을 확인하세요.' },
 }
 
 interface Notice {
