@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
 import Script from 'next/script';
+import Link from 'next/link';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './globals.css';
 import NavBar from './components/NavBar';
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="site-footer">
           <p>서울집주인이 제공하는 정보는 무단 복제·배포·전송 등에 이용할 수 없으며, 이를 무단 이용하는 경우 저작권법 등에 따라 법적 책임을 질 수 있습니다. 광고 문의 karakoram2310@gmail.com</p>
           <p>Copyright © 2026 서울집주인 by 시루콘텐츠파운드리. All Rights Reserved.</p>
+          <p><Link href="/privacy" style={{ color: '#bbb', textDecoration: 'underline' }}>개인정보처리방침</Link></p>
         </footer>
         <Analytics />
         {process.env.NEXT_PUBLIC_GA_ID && (
