@@ -203,10 +203,9 @@ export function SeoulMapDots({
         aria-hidden
       >
         <defs>
-          {/* 각 컬러 버킷에 개별 블러 필터 */}
           {Array.from({ length: BUCKETS }, (_, i) => (
-            <filter key={i} id={`df${i}`} x="-80%" y="-80%" width="260%" height="260%">
-              <feGaussianBlur stdDeviation="16" />
+            <filter key={i} id={`df${i}`} x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="5" />
             </filter>
           ))}
         </defs>
@@ -244,13 +243,13 @@ export function SeoulMapDots({
           const midRatio = (bi + 0.5) / BUCKETS;
           const fill = dotColor(midRatio);
           return (
-            <g key={bi} filter={`url(#df${bi})`} opacity={0.78}>
+            <g key={bi} filter={`url(#df${bi})`} opacity={0.85}>
               {group.map((dot, di) => (
                 <circle
                   key={di}
                   cx={dot.x.toFixed(1)}
                   cy={dot.y.toFixed(1)}
-                  r={11}
+                  r={14}
                   fill={fill}
                 />
               ))}
