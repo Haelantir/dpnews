@@ -418,7 +418,7 @@ export default function BudgetAptsClient() {
                     href={`/trades?gu=${encodeURIComponent(d.gu)}&dong=${encodeURIComponent(d.dong)}&apt=${encodeURIComponent(d.aptNm)}&area=${d.area}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: '#111', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                    style={{ color: '#1d4ed8', textDecoration: 'underline', textUnderlineOffset: 3 }}
                   >
                     {d.aptNm}
                   </a>
