@@ -20,14 +20,6 @@ interface BudgetAptItem {
 
 const AREA_LABELS: Record<AreaType, string> = { '59': '59㎡', '84': '84㎡', '100+': '100㎡ 이상' };
 
-const SEOUL_GUS = [
-  '강남구', '강동구', '강북구', '강서구', '관악구',
-  '광진구', '구로구', '금천구', '노원구', '도봉구',
-  '동대문구', '동작구', '마포구', '서대문구', '서초구',
-  '성동구', '성북구', '송파구', '양천구', '영등포구',
-  '용산구', '은평구', '종로구', '중구', '중랑구',
-];
-
 const MAX_DISPLAY = 500;
 
 // ── Non-linear scale ──────────────────────────────────────────────────────────
@@ -79,17 +71,6 @@ function fmtPrice(만원: number): string {
 
 function fmtDate(d: string): string {
   return d.length >= 10 ? d.slice(0, 10) : d;
-}
-
-// ── Gu affordability color ────────────────────────────────────────────────────
-// ratio 0 → red (hsl 0), ratio 1 → green (hsl 120)
-// Lightness kept dark enough for white text
-
-function guColor(ratio: number): string {
-  const hue = Math.round(ratio * 120);
-  // slightly darker in the yellow-ish midrange for legibility
-  const lit = Math.round(50 - Math.sin(ratio * Math.PI) * 5);
-  return `hsl(${hue},65%,${lit}%)`;
 }
 
 // ── Budget Range Slider ───────────────────────────────────────────────────────
@@ -273,26 +254,6 @@ export default function BudgetAptsClient() {
     });
   };
 
-  // Per-gu affordability (immediate — drives button colors)
-  // colorRatio = clamp((budget/median - 0.8) / 0.7, 0, 1)
-  // median at 80% budget → red, median × 1.5 budget → fully green
-  const guStats = useMemo(() => {
-    const maxPrice = isFinite(maxP) ? Math.round(maxP * 10000) : Infinity;
-    const pricesByGu = new Map<string, number[]>();
-    for (const d of tableData) {
-      if (!pricesByGu.has(d.gu)) pricesByGu.set(d.gu, []);
-      pricesByGu.get(d.gu)!.push(d.price);
-    }
-    const result = new Map<string, number>();
-    for (const [gu, prices] of pricesByGu) {
-      prices.sort((a, b) => a - b);
-      const median = prices[Math.floor(prices.length / 2)];
-      const affordRatio = maxPrice / median;
-      result.set(gu, Math.min(1, Math.max(0, (affordRatio - 0.8) / 0.7)));
-    }
-    return result;
-  }, [tableData, maxP]);
-
   // Filtered data (deferred — drives table)
   const filteredData = useMemo(() => {
     const minPrice = Math.round(ratioToPrice(tableMinR) * 10000);
@@ -343,20 +304,17 @@ export default function BudgetAptsClient() {
     <div className="page-wrap">
 
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>
           예산에 맞는 아파트
         </h1>
         <p style={{ fontSize: 13, color: '#999', margin: 0 }}>
-          내 돈으로 갈 수 있는 지역일수록 초록색으로 표시됩니다. 여러 개의 구를 클릭해서 범위를 좁힐 수도 있어요. 모든 면적은 전용면적입니다.
+          지도에서 구를 클릭해 범위를 좁힐 수 있어요. 여러 구 중복 선택 가능. 모든 면적은 전용면적입니다.
         </p>
       </div>
 
-      {/* Seoul map dots */}
-      <SeoulMapDots minP={minP} maxP={maxP} areaType={areaType} />
-
       {/* Budget slider */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 16 }}>
         <BudgetSlider minR={minR} maxR={maxR} onChange={handleSliderChange} />
 
         {/* Input boxes */}
@@ -383,11 +341,11 @@ export default function BudgetAptsClient() {
       </div>
 
       {/* Area type buttons */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {(['59', '84', '100+'] as AreaType[]).map(at => (
           <button key={at} onClick={() => handleAreaType(at)}
             style={{
-              height: 36, padding: '0 8px',
+              height: 36, padding: '0 16px',
               border: `1px solid ${areaType === at ? '#111' : '#aaa'}`,
               background: areaType === at ? '#111' : '#fff',
               color: areaType === at ? '#fff' : '#555',
@@ -397,38 +355,13 @@ export default function BudgetAptsClient() {
             {AREA_LABELS[at]}
           </button>
         ))}
-        <div /><div />
       </div>
 
-      {/* Gu buttons */}
-      <div className="gu-grid" style={{ marginBottom: 20 }}>
-        {SEOUL_GUS.map(gu => {
-          const ratio = guStats.has(gu) ? guStats.get(gu)! : -1;
-          const isSelected = selectedGus.has(gu);
-          let bg: string;
-          let fg: string;
-          if (isSelected) {
-            bg = '#111'; fg = '#fff';
-          } else if (loading || ratio < 0) {
-            bg = '#e8e8e8'; fg = '#999';
-          } else {
-            bg = guColor(ratio); fg = '#fff';
-          }
-          return (
-            <button key={gu} onClick={() => toggleGu(gu)}
-              style={{
-                height: 36, padding: '0 4px',
-                border: `2px solid ${isSelected ? '#111' : 'transparent'}`,
-                background: bg, color: fg,
-                fontSize: 12, cursor: 'pointer', appearance: 'none',
-                fontFamily: 'inherit', fontWeight: isSelected ? 700 : 500,
-                transition: 'background 0.15s',
-              }}>
-              {gu}
-            </button>
-          );
-        })}
-      </div>
+      {/* Seoul map — click to select districts */}
+      <SeoulMapDots
+        minP={minP} maxP={maxP} areaType={areaType}
+        selectedGus={selectedGus} onGuClick={toggleGu}
+      />
 
       {/* Table info row */}
       <div style={{ fontSize: 12, color: '#888', marginBottom: 6, minHeight: 18 }}>

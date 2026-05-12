@@ -10,7 +10,6 @@ interface AptDot {
   '59'?: [number, string]; '84'?: [number, string]; '100'?: [number, string];
 }
 interface AptMapData { gen: string; d: AptDot[]; }
-interface RiverData { outer: number[][][]; inner: number[][][]; }
 
 // ── Projection (Seoul GeoJSON bounds) ─────────────────────────────────────────
 const LNG_MIN = 126.767, LNG_MAX = 127.185;
@@ -19,7 +18,7 @@ const VW = 1000, VH = 825;
 const lx = (lng: number) => (lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * VW;
 const ly = (lat: number) => (LAT_MAX - lat) / (LAT_MAX - LAT_MIN) * VH;
 
-// ── 구 이름 라벨 (GeoJSON 외곽링 평균 좌표) ───────────────────────────────────
+// ── 구 이름 라벨 ──────────────────────────────────────────────────────────────
 const DISTRICT_LABELS: [string, number, number][] = [
   ['강남구', 737, 637], ['강동구', 920, 454], ['강북구', 587, 170],
   ['강서구', 124, 427], ['관악구', 428, 707], ['광진구', 782, 453],
@@ -32,7 +31,19 @@ const DISTRICT_LABELS: [string, number, number][] = [
   ['중랑구', 793, 312],
 ];
 
-// ── GeoJSON ring → SVG path ────────────────────────────────────────────────────
+// ── District pairs whose shared boundary is the Han River ─────────────────────
+const RIVER_PAIRS: [string, string][] = [
+  ['강서구', '마포구'],
+  ['마포구', '영등포구'],
+  ['영등포구', '용산구'],
+  ['용산구', '동작구'],
+  ['서초구', '용산구'],
+  ['강남구', '성동구'],
+  ['광진구', '송파구'],
+  ['강동구', '송파구'],
+];
+
+// ── GeoJSON ring → SVG path ───────────────────────────────────────────────────
 function ringToPath(ring: number[][]): string {
   return ring.map((pt, i) =>
     `${i ? 'L' : 'M'}${lx(pt[0]).toFixed(1)},${ly(pt[1]).toFixed(1)}`
@@ -45,28 +56,71 @@ function featureToPath(geom: { type: string; coordinates: any }): string {
     return (geom.coordinates as number[][][][]).flatMap((p: number[][][]) => p.map(ringToPath)).join('');
   return '';
 }
-function ringsToPath(rings: number[][][]): string {
-  return rings.map(ringToPath).join('');
+
+// ── Extract shared boundary edges between Han River district pairs ─────────────
+function buildRiverBoundaryPath(features: any[]): string {
+  const ringsByName = new Map<string, number[][][]>();
+  for (const f of features) {
+    const name: string = f.properties?.name;
+    if (!name) continue;
+    const geom = f.geometry;
+    let rings: number[][][] = [];
+    if (geom.type === 'Polygon') rings = geom.coordinates;
+    else if (geom.type === 'MultiPolygon') rings = (geom.coordinates as number[][][][]).flat();
+    ringsByName.set(name, (ringsByName.get(name) ?? []).concat(rings));
+  }
+
+  let path = '';
+  const done = new Set<string>();
+
+  for (const [a, b] of RIVER_PAIRS) {
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (done.has(key)) continue;
+    done.add(key);
+
+    const ringsA = ringsByName.get(a) ?? [];
+    const ringsB = ringsByName.get(b) ?? [];
+
+    // Build forward-edge set for A: "lng1,lat1|lng2,lat2"
+    const edgesA = new Set<string>();
+    for (const ring of ringsA) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        edgesA.add(`${ring[i][0]},${ring[i][1]}|${ring[i+1][0]},${ring[i+1][1]}`);
+      }
+    }
+
+    // Find edges in B whose reverse is in A
+    for (const ring of ringsB) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const rev = `${ring[i+1][0]},${ring[i+1][1]}|${ring[i][0]},${ring[i][1]}`;
+        if (edgesA.has(rev)) {
+          path += `M${lx(ring[i][0]).toFixed(1)},${ly(ring[i][1]).toFixed(1)}L${lx(ring[i+1][0]).toFixed(1)},${ly(ring[i+1][1]).toFixed(1)}`;
+        }
+      }
+    }
+  }
+
+  return path;
 }
 
-// ── Color ──────────────────────────────────────────────────────────────────────
+// ── Color ─────────────────────────────────────────────────────────────────────
 function dotColor(r: number): string {
   const t = Math.max(0, Math.min(1, r));
   return `hsl(${Math.round(220 + t * 55)},${Math.round(78 - t * 8)}%,${Math.round(60 - t * 8)}%)`;
 }
 
-// ── Module-level cache ─────────────────────────────────────────────────────────
-let geoCached:      { features: any[] } | null = null;
-let riverCached:    RiverData | null = null;
-let dotsCached:     AptMapData | null = null;
+// ── Module-level cache ────────────────────────────────────────────────────────
+let geoCached:  { features: any[] } | null = null;
+let dotsCached: AptMapData | null = null;
 
-// ── Component ──────────────────────────────────────────────────────────────────
-export function SeoulMapDots({ minP, maxP, areaType }: {
+// ── Component ─────────────────────────────────────────────────────────────────
+export function SeoulMapDots({ minP, maxP, areaType, selectedGus, onGuClick }: {
   minP: number; maxP: number; areaType: AreaType;
+  selectedGus: Set<string>;
+  onGuClick: (gu: string) => void;
 }) {
-  const [geo,      setGeo]      = useState<typeof geoCached>(geoCached);
-  const [river,    setRiver]    = useState<RiverData | null>(riverCached);
-  const [mapData,  setMapData]  = useState<AptMapData | null>(dotsCached);
+  const [geo,     setGeo]     = useState<typeof geoCached>(geoCached);
+  const [mapData, setMapData] = useState<AptMapData | null>(dotsCached);
 
   useEffect(() => {
     let dead = false;
@@ -83,22 +137,23 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
       setCache(v); setter(v);
     }
     fetchOnce('/data/seoul-geo.json', () => geoCached, v => { geoCached = v; }, setGeo);
-    fetchOnce('/data/hanriver.json',  () => riverCached, v => { riverCached = v; }, setRiver);
     fetchOnce('/data/apt-map.json',   () => dotsCached, v => { dotsCached = v; }, setMapData);
     return () => { dead = true; };
   }, []);
 
-  const districtPaths = useMemo(
-    () => geo?.features.map((f: any) => featureToPath(f.geometry)) ?? [],
+  // District paths with names
+  const districts = useMemo(
+    () => geo?.features.map((f: any) => ({
+      name: f.properties?.name as string,
+      d: featureToPath(f.geometry),
+    })) ?? [],
     [geo],
   );
-  const riverOuterPath = useMemo(
-    () => river ? ringsToPath(river.outer) : '',
-    [river],
-  );
-  const riverInnerPath = useMemo(
-    () => river ? ringsToPath(river.inner) : '',
-    [river],
+
+  // River boundary path (shared edges between Han River district pairs)
+  const riverBoundaryPath = useMemo(
+    () => geo ? buildRiverBoundaryPath(geo.features) : '',
+    [geo],
   );
 
   const cutoff = useMemo(() => {
@@ -140,59 +195,62 @@ export function SeoulMapDots({ minP, maxP, areaType }: {
       <svg
         viewBox={`0 0 ${VW} ${VH}`}
         overflow="hidden"
-        style={{ width: '100%', height: 'auto', display: 'block', background: '#111', borderRadius: 4, border: '1px solid #333' }}
+        style={{ width: '100%', height: 'auto', display: 'block', background: '#111', borderRadius: 4, border: '1px solid #333', cursor: geo ? 'pointer' : 'default' }}
         aria-hidden
       >
-        <defs>
-          <clipPath id="seoulClip">
-            <rect x={0} y={0} width={VW} height={VH} />
-          </clipPath>
-          {Array.from({ length: BUCKETS }, (_, i) => (
-            <filter key={i} id={`df${i}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" />
-            </filter>
-          ))}
-        </defs>
-
-        {/* 구 채우기 */}
-        {districtPaths.map((d, i) => (
-          <path key={i} d={d} fill="#e8e8e6" stroke="none" />
-        ))}
-
-        {/* 한강 outer (물) */}
-        {riverOuterPath && (
-          <path d={riverOuterPath} fill="#aac8e0" stroke="none" clipPath="url(#seoulClip)" />
-        )}
-
-        {/* 한강 inner (섬/육지) */}
-        {riverInnerPath && (
-          <path d={riverInnerPath} fill="#e8e8e6" stroke="none" clipPath="url(#seoulClip)" />
-        )}
+        {/* 구 채우기 (선택 여부에 따라 색상 반전) */}
+        {districts.map(({ name, d }) => {
+          const selected = selectedGus.has(name);
+          return (
+            <path key={name} d={d}
+              fill={selected ? '#2a2a3a' : '#e8e8e6'}
+              stroke="none"
+              onClick={() => onGuClick(name)}
+              style={{ cursor: 'pointer' }}
+            />
+          );
+        })}
 
         {/* 구 경계선 */}
-        {districtPaths.map((d, i) => (
-          <path key={`b${i}`} d={d} fill="none" stroke="#bbb" strokeWidth={0.7} strokeLinejoin="round" />
+        {districts.map(({ name, d }) => (
+          <path key={`b${name}`} d={d}
+            fill="none" stroke="#bbb" strokeWidth={0.7} strokeLinejoin="round"
+            style={{ pointerEvents: 'none' }}
+          />
         ))}
+
+        {/* 한강 경계 (인접 구 공유 경계선을 하늘색 굵은 선으로) */}
+        {riverBoundaryPath && (
+          <path d={riverBoundaryPath}
+            fill="none" stroke="#7ab8d4" strokeWidth={2.8}
+            strokeLinecap="round" strokeLinejoin="round"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
 
         {/* 구 이름 */}
-        {geo && DISTRICT_LABELS.map(([name, x, y]) => (
-          <text key={name} x={x} y={y}
-            textAnchor="middle" dominantBaseline="middle"
-            fontSize={17} fill="#999"
-            style={{ pointerEvents: 'none', userSelect: 'none' }}
-          >
-            {name}
-          </text>
-        ))}
+        {geo && DISTRICT_LABELS.map(([name, x, y]) => {
+          const selected = selectedGus.has(name);
+          return (
+            <text key={name} x={x} y={y}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize={17} fill={selected ? '#aac8ff' : '#999'}
+              fontWeight={selected ? 700 : 400}
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              {name}
+            </text>
+          );
+        })}
 
-        {/* 아파트 dot */}
+        {/* 아파트 dot (blur 없음) */}
         {visibleDots.length > 0 && buckets.map((group, bi) => {
           if (!group.length) return null;
           const fill = dotColor((bi + 0.5) / BUCKETS);
           return (
-            <g key={bi} filter={`url(#df${bi})`} opacity={0.9}>
+            <g key={bi} opacity={0.85}>
               {group.map((dot, di) => (
-                <circle key={di} cx={dot.x.toFixed(1)} cy={dot.y.toFixed(1)} r={7} fill={fill} />
+                <circle key={di} cx={dot.x.toFixed(1)} cy={dot.y.toFixed(1)} r={5} fill={fill} style={{ pointerEvents: 'none' }} />
               ))}
             </g>
           );
