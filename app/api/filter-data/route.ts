@@ -1,6 +1,6 @@
 import filterData from '@/lib/filter-data.json';
 
-const HEADERS = { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' };
+const HEADERS = { 'Cache-Control': 'public, s-maxage=86400, max-age=0, must-revalidate' };
 
 export async function GET() {
   return Response.json(filterData, { headers: HEADERS });
