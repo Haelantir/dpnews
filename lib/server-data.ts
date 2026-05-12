@@ -346,6 +346,10 @@ export function getBudgetApts(areaType: AreaType): BudgetAptItem[] {
   const areaMin = areaType === '59' ? 59 * 0.9 : areaType === '84' ? 84 * 0.9 : 100;
   const areaMax = areaType === '59' ? 59 * 1.1 : areaType === '84' ? 84 * 1.1 : Infinity;
 
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 60);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
   const result: BudgetAptItem[] = [];
 
   for (const [key, trades] of index.entries()) {
@@ -361,7 +365,7 @@ export function getBudgetApts(areaType: AreaType): BudgetAptItem[] {
       if (t.area < areaMin || t.area > areaMax) continue;
       if (!latest || t.date > latest.date) latest = t;
     }
-    if (!latest) continue;
+    if (!latest || latest.date < cutoffStr) continue;
 
     result.push({
       aptNm, gu, dong,
