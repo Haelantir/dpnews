@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -11,14 +12,13 @@ interface RaceJson { months: string[]; apts: Record<string, RaceApt>; }
 interface FrameItem { key: string; aptNm: string; dong: string; price: number; }
 interface DisplayItem {
   key: string; aptNm: string; dong: string;
-  rank: number;   // fractional (interpolated)
-  price: number;  // interpolated 만원/㎡
-  opacity: number;
+  rank: number; price: number; opacity: number;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const AREA_LABELS: Record<AreaType, string> = { '59': '59㎡', '84': '84㎡', '100+': '100㎡ 이상' };
+const VALID_AREAS: AreaType[] = ['59', '84', '100+'];
 
 const SEOUL_DISTRICTS = [
   '강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구',
@@ -28,37 +28,19 @@ const SEOUL_DISTRICTS = [
 ];
 
 const TOP_N = 20;
-const MS_PER_MONTH = 1050;  // 1.05초/월 → 77개월 ≈ 81초
+const MS_PER_MONTH = 1050;
 const BAR_H = 36;
 const BAR_GAP = 5;
 const ROW_H = BAR_H + BAR_GAP;
-const CHART_OFFSET_TOP = 48; // 날짜 워터마크와 1등 바가 겹치지 않도록 바를 아래로 밀기
+const CHART_OFFSET_TOP = 48;
 const CHART_H = TOP_N * ROW_H - BAR_GAP + CHART_OFFSET_TOP;
-const LABEL_W = 132;
+const LABEL_W = 175; // 넉넉하게 확보 — 긴 아파트명도 잘리지 않도록
 
-// 스펙트럼 전체를 커버하는 20색 팔레트
-// 인접 인덱스끼리 최대한 달라 보이도록 색조를 교차 배치
 const PALETTE = [
-  '#e11d48', // 빨강
-  '#16a34a', // 초록
-  '#2563eb', // 파랑
-  '#f59e0b', // 주황/노랑
-  '#7c3aed', // 보라
-  '#0d9488', // 청록
-  '#ea580c', // 진주황
-  '#4338ca', // 남색
-  '#059669', // 에메랄드
-  '#db2777', // 분홍
-  '#0284c7', // 하늘
-  '#65a30d', // 연두
-  '#c026d3', // 자주
-  '#0f766e', // 짙은청록
-  '#be123c', // 진빨강
-  '#6d28d9', // 짙은보라
-  '#b45309', // 갈색/호박
-  '#0e7490', // 짙은하늘
-  '#15803d', // 짙은초록
-  '#9333ea', // 밝은보라
+  '#e11d48', '#16a34a', '#2563eb', '#f59e0b', '#7c3aed',
+  '#0d9488', '#ea580c', '#4338ca', '#059669', '#db2777',
+  '#0284c7', '#65a30d', '#c026d3', '#0f766e', '#be123c',
+  '#6d28d9', '#b45309', '#0e7490', '#15803d', '#9333ea',
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -82,19 +64,17 @@ function buildFrames(json: RaceJson): FrameItem[][] {
   });
 }
 
-// raceJson 로드 시 동→색상 매핑 (정렬 순서로 할당 → 최대 분산)
 function buildDongColorMap(json: RaceJson): Record<string, string> {
   const dongs = [...new Set(Object.values(json.apts).map(a => a.dong))].sort();
   return Object.fromEntries(dongs.map((dong, i) => [dong, PALETTE[i % PALETTE.length]]));
 }
 
-// frameProgress에서 보간된 DisplayItem 목록을 계산 (매 rAF 프레임 호출)
 function computeDisplay(
   frameProgress: number,
   frames: FrameItem[][],
   raceJson: RaceJson,
 ): { items: DisplayItem[]; ym: string; maxPrice: number } {
-  const fi  = Math.max(0, Math.min(Math.floor(frameProgress), frames.length - 2));
+  const fi   = Math.max(0, Math.min(Math.floor(frameProgress), frames.length - 2));
   const rawT = Math.max(0, Math.min(frameProgress - fi, 1));
   const t    = easeInOut(rawT);
 
@@ -116,12 +96,10 @@ function computeDisplay(
       price   = c.price + (n.price - c.price) * t;
       opacity = 1;
     } else if (c) {
-      // 퇴장: 현재 rank → 화면 아래
       rank    = c.i + (TOP_N + 1 - c.i) * t;
       price   = c.price;
       opacity = Math.max(0, 1 - t * 3);
     } else {
-      // 진입: 화면 아래 → 새 rank
       rank    = (TOP_N + 1) - ((TOP_N + 1) - n!.i) * t;
       price   = n!.price;
       opacity = Math.min(1, t * 3);
@@ -130,33 +108,55 @@ function computeDisplay(
   }
 
   items.sort((a, b) => a.rank - b.rank);
-  // maxPrice도 보간 → 1등 가격이 급변해도 차트 스케일이 부드럽게 리스케일됨
+
+  // maxPrice 보간 → 리스케일도 부드럽게
   const curMax = curFrame[0]?.price ?? 1;
   const nxtMax = nxtFrame[0]?.price ?? 1;
   const maxPrice = curMax + (nxtMax - curMax) * t;
+
   return { items, ym: raceJson.months[fi] ?? '', maxPrice };
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function PriceRaceClient() {
-  const [selectedGu, setSelectedGu] = useState('');
-  const [areaType,   setAreaType]   = useState<AreaType>('84');
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
+  // URL 파라미터로 초기값 설정 (공유 링크 지원)
+  const initGu   = searchParams.get('gu') ?? '';
+  const initArea = searchParams.get('area') as AreaType | null;
+
+  const [selectedGu, setSelectedGu] = useState(
+    SEOUL_DISTRICTS.includes(initGu) ? initGu : ''
+  );
+  const [areaType, setAreaType] = useState<AreaType>(
+    initArea && VALID_AREAS.includes(initArea) ? initArea : '84'
+  );
+
   const [raceJson,   setRaceJson]   = useState<RaceJson | null>(null);
   const [loading,    setLoading]    = useState(false);
   const [loadError,  setLoadError]  = useState(false);
   const [started,    setStarted]    = useState(false);
   const [playing,    setPlaying]    = useState(false);
-
-  // 연속 보간을 위한 float 프레임 인덱스 (0 ~ frames.length-1)
   const [frameProgress, setFrameProgress] = useState(0);
 
-  const framesRef      = useRef<FrameItem[][]>([]);
-  const rafRef         = useRef<number | null>(null);
-  const startTsRef     = useRef(0);
-  const startProgRef   = useRef(0);
-  const wrapRef        = useRef<HTMLDivElement>(null);
+  const framesRef    = useRef<FrameItem[][]>([]);
+  const rafRef       = useRef<number | null>(null);
+  const startTsRef   = useRef(0);
+  const startProgRef = useRef(0);
+  const wrapRef      = useRef<HTMLDivElement>(null);
   const [barAreaW, setBarAreaW] = useState(500);
+
+  // 선택값 변경 시 URL 업데이트 (공유 가능한 링크)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    const params = new URLSearchParams();
+    if (selectedGu) params.set('gu', selectedGu);
+    params.set('area', areaType);
+    router.replace(`/price-race?${params.toString()}`, { scroll: false });
+  }, [selectedGu, areaType, router]);
 
   // 컨테이너 너비 측정
   useEffect(() => {
@@ -180,21 +180,15 @@ export default function PriceRaceClient() {
     setLoadError(false);
   }, [selectedGu, areaType]);
 
-  // ── rAF 루프: playing이 true가 될 때만 시작 ──────────────────────────────
+  // rAF 루프
   useEffect(() => {
     if (!playing || !framesRef.current.length) return;
-
-    // playing이 켜지는 시점의 frameProgress를 기준으로 삼음
     startTsRef.current   = performance.now();
-    startProgRef.current = frameProgress; // 클로저로 캡처 (최신 값)
-
+    startProgRef.current = frameProgress;
     const frames = framesRef.current;
     let id: number;
-
     const loop = (ts: number) => {
-      const elapsed = ts - startTsRef.current;
-      const newProg = startProgRef.current + elapsed / MS_PER_MONTH;
-
+      const newProg = startProgRef.current + (ts - startTsRef.current) / MS_PER_MONTH;
       if (newProg >= frames.length - 1) {
         setFrameProgress(frames.length - 1);
         setPlaying(false);
@@ -203,14 +197,13 @@ export default function PriceRaceClient() {
       setFrameProgress(newProg);
       id = requestAnimationFrame(loop);
     };
-
     id = requestAnimationFrame(loop);
     rafRef.current = id;
     return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing]); // frameProgress를 deps에서 제외 — 매 프레임 effect 재실행 방지
+  }, [playing]);
 
-  // ── 컨트롤 ───────────────────────────────────────────────────────────────
+  // ── 핸들러 ───────────────────────────────────────────────────────────────
 
   const handleStart = useCallback(async () => {
     if (!selectedGu) return;
@@ -242,19 +235,26 @@ export default function PriceRaceClient() {
     setPlaying(true);
   }, [selectedGu, areaType, raceJson]);
 
+  // URL에 gu 파라미터가 있으면 마운트 시 자동 시작
+  const didAutoStart = useRef(false);
+  useEffect(() => {
+    if (didAutoStart.current || !selectedGu) return;
+    didAutoStart.current = true;
+    handleStart();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handlePause = useCallback(() => {
     setPlaying(false);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }, []);
 
   const handleResume = useCallback(() => {
-    const frames = framesRef.current;
-    if (frameProgress >= frames.length - 1) {
-      // 처음부터 재시작
+    if (frameProgress >= framesRef.current.length - 1) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       setPlaying(false);
       setFrameProgress(0);
-      setTimeout(() => setPlaying(true), 0); // 상태 반영 후 재생
+      setTimeout(() => setPlaying(true), 0);
     } else {
       setPlaying(true);
     }
@@ -273,19 +273,17 @@ export default function PriceRaceClient() {
     [raceJson],
   );
 
-  // ── 보간된 표시 데이터 계산 (매 렌더 = 60fps 동안 매 프레임) ─────────────
+  // ── 보간 계산 ─────────────────────────────────────────────────────────────
 
-  const frames = framesRef.current;
+  const frames    = framesRef.current;
   const hasFrames = frames.length > 0 && raceJson != null;
 
   const { items: displayItems, ym: currentYm, maxPrice } = hasFrames
     ? computeDisplay(frameProgress, frames, raceJson!)
     : { items: [] as DisplayItem[], ym: '', maxPrice: 1 };
 
-  const ymDisplay = currentYm
-    ? currentYm.slice(0, 4) + '.' + currentYm.slice(5, 7)
-    : '';
-  const sliderVal = Math.min(frameProgress, frames.length - 1);
+  const ymDisplay  = currentYm ? currentYm.slice(0, 4) + '.' + currentYm.slice(5, 7) : '';
+  const sliderVal  = Math.min(frameProgress, frames.length - 1);
   const isFinished = sliderVal >= frames.length - 1 && frames.length > 0;
 
   const visibleDongs = [...new Set(
@@ -296,7 +294,6 @@ export default function PriceRaceClient() {
 
   return (
     <div className="page-wrap">
-      {/* 헤더 */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>
           시세 레이스
@@ -378,13 +375,8 @@ export default function PriceRaceClient() {
               {playing ? '일시정지' : isFinished ? '처음부터' : '재생'}
             </button>
             <input
-              type="range"
-              min={0}
-              max={frames.length - 1}
-              step={0.01}
-              value={sliderVal}
-              onChange={handleSlider}
-              style={{ flex: 1 }}
+              type="range" min={0} max={frames.length - 1} step={0.01}
+              value={sliderVal} onChange={handleSlider} style={{ flex: 1 }}
             />
             <span style={{
               fontSize: 12, color: '#888', whiteSpace: 'nowrap',
@@ -394,14 +386,14 @@ export default function PriceRaceClient() {
             </span>
           </div>
 
-          {/* 차트 영역 */}
+          {/* 차트 */}
           <div
             ref={wrapRef}
             style={{ position: 'relative', width: '100%', height: CHART_H, overflow: 'hidden' }}
           >
-            {/* 날짜 워터마크 */}
+            {/* 날짜 워터마크 — 1등 바와 겹치지 않도록 상단에 여백(CHART_OFFSET_TOP) 확보 */}
             <div style={{
-              position: 'absolute', right: 4, top: 0,
+              position: 'absolute', right: 4, top: 4,
               fontSize: 32, fontWeight: 800,
               color: 'rgba(0,0,0,0.07)',
               lineHeight: 1, fontVariantNumeric: 'tabular-nums',
@@ -411,55 +403,46 @@ export default function PriceRaceClient() {
               {ymDisplay}
             </div>
 
-            {/* 바들 — top은 JS 보간값, CSS transition 없음 */}
             {displayItems.map(item => {
-              const color  = dongColorMap[item.dong] ?? '#888';
-              const fillW  = Math.max(Math.round((item.price / maxPrice) * barAreaW), 3);
-              const topPx  = item.rank * ROW_H + CHART_OFFSET_TOP;
+              const color = dongColorMap[item.dong] ?? '#888';
+              const fillW = Math.max(Math.round((item.price / maxPrice) * barAreaW), 3);
+              const topPx = item.rank * ROW_H + CHART_OFFSET_TOP;
 
               return (
                 <div
                   key={item.key}
                   style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: topPx,
-                    width: '100%',
-                    height: BAR_H,
+                    position: 'absolute', left: 0, top: topPx,
+                    width: '100%', height: BAR_H,
                     opacity: item.opacity,
-                    display: 'flex',
-                    alignItems: 'center',
+                    display: 'flex', alignItems: 'center',
                     willChange: 'top, opacity',
                   }}
                 >
-                  {/* 아파트명 */}
+                  {/* 아파트명 — overflow 없이 전체 표시 */}
                   <div style={{
                     width: LABEL_W, flexShrink: 0,
-                    fontSize: 14, color: '#222',
+                    fontSize: 13, color: '#222',
                     textAlign: 'right', paddingRight: 8,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                     lineHeight: `${BAR_H}px`, fontWeight: 600,
-                  }} title={item.aptNm}>
+                  }}>
                     {item.aptNm}
                   </div>
 
-                  {/* 바 — 가격은 바 오른쪽 안쪽에 */}
+                  {/* 바 — 가격은 바 오른쪽 안쪽 */}
                   <div style={{ flex: 1, position: 'relative', height: BAR_H, minWidth: 0 }}>
                     <div style={{
-                      position: 'absolute',
-                      left: 0, top: 4,
-                      height: BAR_H - 8,
-                      width: fillW,
+                      position: 'absolute', left: 0, top: 4,
+                      height: BAR_H - 8, width: fillW,
                       background: color,
                       borderRadius: '0 3px 3px 0',
                       overflow: 'hidden',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
                     }}>
                       <span style={{
                         paddingRight: 7,
-                        fontSize: 14, fontWeight: 700,
+                        fontSize: 13, fontWeight: 700,
                         color: 'rgba(255,255,255,0.92)',
                         whiteSpace: 'nowrap',
                         fontVariantNumeric: 'tabular-nums',
