@@ -437,16 +437,27 @@ export default function PriceRaceClient() {
                       background: color,
                       borderRadius: '0 3px 3px 0',
                       overflow: 'hidden',
-                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                      display: 'flex', alignItems: 'center',
+                      justifyContent: 'space-between',
                     }}>
+                      {/* 왼쪽: 동 이름 */}
+                      <span style={{
+                        paddingLeft: 7,
+                        fontSize: 12, fontWeight: 600,
+                        color: 'rgba(255,255,255,0.80)',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {item.dong}
+                      </span>
+                      {/* 오른쪽: 단가 */}
                       <span style={{
                         paddingRight: 7,
-                        fontSize: 13, fontWeight: 700,
+                        fontSize: 12, fontWeight: 700,
                         color: 'rgba(255,255,255,0.92)',
                         whiteSpace: 'nowrap',
                         fontVariantNumeric: 'tabular-nums',
                       }}>
-                        {Math.round(item.price).toLocaleString()}
+                        {Math.round(item.price).toLocaleString()}만/㎡
                       </span>
                     </div>
                   </div>
