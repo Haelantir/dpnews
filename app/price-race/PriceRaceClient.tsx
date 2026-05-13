@@ -146,7 +146,7 @@ export default function PriceRaceClient() {
   const startTsRef   = useRef(0);
   const startProgRef = useRef(0);
   const wrapRef      = useRef<HTMLDivElement>(null);
-  const [barAreaW, setBarAreaW] = useState(500);
+  const [containerW, setContainerW] = useState(800);
 
   // 선택값 변경 시 URL 업데이트 (공유 가능한 링크)
   const isFirstRender = useRef(true);
@@ -158,13 +158,11 @@ export default function PriceRaceClient() {
     router.replace(`/price-race?${params.toString()}`, { scroll: false });
   }, [selectedGu, areaType, router]);
 
-  // 컨테이너 너비 측정
+  // 컨테이너 너비 측정 — 모바일/데스크톱 반응형
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const obs = new ResizeObserver(e =>
-      setBarAreaW(Math.max(e[0].contentRect.width - LABEL_W, 80))
-    );
+    const obs = new ResizeObserver(e => setContainerW(e[0].contentRect.width));
     obs.observe(el);
     return () => obs.disconnect();
   }, [started]);
@@ -272,6 +270,14 @@ export default function PriceRaceClient() {
     () => (raceJson ? buildDongColorMap(raceJson) : ({} as Record<string, string>)),
     [raceJson],
   );
+
+  // ── 반응형 크기값 (컨테이너 폭 기준) ────────────────────────────────────
+
+  const isMobile   = containerW < 500;
+  const labelW     = isMobile ? 108 : 175;   // 아파트명 영역 너비
+  const barAreaW   = Math.max(containerW - labelW, 80);
+  const fontApt    = isMobile ? 11  : 13;    // 아파트명 폰트
+  const fontBar    = isMobile ? 10  : 12;    // 바 안 동이름·단가 폰트
 
   // ── 보간 계산 ─────────────────────────────────────────────────────────────
 
@@ -418,18 +424,18 @@ export default function PriceRaceClient() {
                     willChange: 'top, opacity',
                   }}
                 >
-                  {/* 아파트명 — overflow 없이 전체 표시 */}
+                  {/* 아파트명 */}
                   <div style={{
-                    width: LABEL_W, flexShrink: 0,
-                    fontSize: 13, color: '#222',
-                    textAlign: 'right', paddingRight: 8,
-                    whiteSpace: 'nowrap',
+                    width: labelW, flexShrink: 0,
+                    fontSize: fontApt, color: '#222',
+                    textAlign: 'right', paddingRight: 7,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     lineHeight: `${BAR_H}px`, fontWeight: 600,
-                  }}>
+                  }} title={item.aptNm}>
                     {item.aptNm}
                   </div>
 
-                  {/* 바 — 가격은 바 오른쪽 안쪽 */}
+                  {/* 바 — 왼쪽 동이름, 오른쪽 단가 */}
                   <div style={{ flex: 1, position: 'relative', height: BAR_H, minWidth: 0 }}>
                     <div style={{
                       position: 'absolute', left: 0, top: 4,
@@ -440,19 +446,17 @@ export default function PriceRaceClient() {
                       display: 'flex', alignItems: 'center',
                       justifyContent: 'space-between',
                     }}>
-                      {/* 왼쪽: 동 이름 */}
                       <span style={{
-                        paddingLeft: 7,
-                        fontSize: 12, fontWeight: 600,
+                        paddingLeft: 6,
+                        fontSize: fontBar, fontWeight: 600,
                         color: 'rgba(255,255,255,0.80)',
                         whiteSpace: 'nowrap',
                       }}>
                         {item.dong}
                       </span>
-                      {/* 오른쪽: 단가 */}
                       <span style={{
-                        paddingRight: 7,
-                        fontSize: 12, fontWeight: 700,
+                        paddingRight: 6,
+                        fontSize: fontBar, fontWeight: 700,
                         color: 'rgba(255,255,255,0.92)',
                         whiteSpace: 'nowrap',
                         fontVariantNumeric: 'tabular-nums',
