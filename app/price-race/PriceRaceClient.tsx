@@ -6,27 +6,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 type AreaType = '59' | '84' | '100+';
 
-interface RaceApt {
-  dong: string;
-  data: Record<string, number>; // ym → avg 만원/㎡
-}
-
-interface RaceJson {
-  months: string[];
-  apts: Record<string, RaceApt>;
-}
-
-interface FrameItem {
-  key: string;   // "아파트명|동"
-  aptNm: string;
-  dong: string;
-  price: number; // 만원/㎡
-}
-
-// exiting 바: 마지막 rank 위치에서 fade-out
-interface ExitItem extends FrameItem {
-  lastRank: number;
-  id: number; // 고유 id (동일 key가 여러 번 exit할 수 있어서)
+interface RaceApt { dong: string; data: Record<string, number>; }
+interface RaceJson { months: string[]; apts: Record<string, RaceApt>; }
+interface FrameItem { key: string; aptNm: string; dong: string; price: number; }
+interface DisplayItem {
+  key: string; aptNm: string; dong: string;
+  rank: number;   // fractional (interpolated)
+  price: number;  // interpolated 만원/㎡
+  opacity: number;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -41,28 +28,43 @@ const SEOUL_DISTRICTS = [
 ];
 
 const TOP_N = 20;
-const MS_PER_MONTH = 500;
+const MS_PER_MONTH = 700;   // 0.7초/월 → 77개월 ≈ 54초
 const BAR_H = 30;
 const BAR_GAP = 5;
 const ROW_H = BAR_H + BAR_GAP;
 const CHART_H = TOP_N * ROW_H - BAR_GAP;
 const LABEL_W = 132;
-const EXIT_DURATION = 380; // ms
 
+// 스펙트럼 전체를 커버하는 20색 팔레트
+// 인접 인덱스끼리 최대한 달라 보이도록 색조를 교차 배치
 const PALETTE = [
-  '#2563eb','#dc2626','#16a34a','#d97706','#7c3aed',
-  '#0891b2','#be185d','#65a30d','#c2410c','#0f766e',
-  '#9333ea','#b45309','#0284c7','#15803d','#b91c1c',
-  '#6d28d9','#0369a1','#047857','#92400e','#7e22ce',
+  '#e11d48', // 빨강
+  '#16a34a', // 초록
+  '#2563eb', // 파랑
+  '#f59e0b', // 주황/노랑
+  '#7c3aed', // 보라
+  '#0d9488', // 청록
+  '#ea580c', // 진주황
+  '#4338ca', // 남색
+  '#059669', // 에메랄드
+  '#db2777', // 분홍
+  '#0284c7', // 하늘
+  '#65a30d', // 연두
+  '#c026d3', // 자주
+  '#0f766e', // 짙은청록
+  '#be123c', // 진빨강
+  '#6d28d9', // 짙은보라
+  '#b45309', // 갈색/호박
+  '#0e7490', // 짙은하늘
+  '#15803d', // 짙은초록
+  '#9333ea', // 밝은보라
 ];
 
-function dongColor(dong: string): string {
-  let h = 0;
-  for (let i = 0; i < dong.length; i++) h = (h * 31 + dong.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Pre-process frames ────────────────────────────────────────────────────────
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
 
 function buildFrames(json: RaceJson): FrameItem[][] {
   const lastKnown = new Map<string, number>();
@@ -72,191 +74,151 @@ function buildFrames(json: RaceJson): FrameItem[][] {
     }
     const items: FrameItem[] = [];
     for (const [key, price] of lastKnown.entries()) {
-      const apt = json.apts[key];
-      items.push({ key, aptNm: key.split('|')[0], dong: apt.dong, price });
+      items.push({ key, aptNm: key.split('|')[0], dong: json.apts[key].dong, price });
     }
     items.sort((a, b) => b.price - a.price);
     return items.slice(0, TOP_N);
   });
 }
 
-// ── Bar ───────────────────────────────────────────────────────────────────────
-
-function Bar({
-  item, rank, maxPrice, barAreaW, isNew, isExit, exitRank,
-}: {
-  item: FrameItem;
-  rank: number;
-  maxPrice: number;
-  barAreaW: number;
-  isNew: boolean;
-  isExit: boolean;
-  exitRank?: number;
-}) {
-  const color = dongColor(item.dong);
-  const fillW = maxPrice > 0 ? Math.max(Math.round((item.price / maxPrice) * barAreaW), 3) : 3;
-  const topPx = (isExit ? (exitRank ?? rank) : rank) * ROW_H;
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: topPx,
-        width: '100%',
-        height: BAR_H,
-        display: 'flex',
-        alignItems: 'center',
-        // 진입: keyframe animation (새 마운트에서 동작)
-        // 퇴장: keyframe animation
-        // 순위 변동: top transition (안정적 key일 때만 동작)
-        animation: isNew
-          ? `raceBarEnter 0.35s ease forwards`
-          : isExit
-          ? `raceBarExit ${EXIT_DURATION}ms ease forwards`
-          : 'none',
-        transition: !isNew && !isExit ? 'top 0.45s ease' : 'none',
-      }}
-    >
-      {/* 아파트명 */}
-      <div
-        style={{
-          width: LABEL_W,
-          flexShrink: 0,
-          fontSize: 11,
-          color: '#222',
-          textAlign: 'right',
-          paddingRight: 8,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          lineHeight: `${BAR_H}px`,
-          fontWeight: 500,
-        }}
-        title={item.aptNm}
-      >
-        {item.aptNm}
-      </div>
-
-      {/* 바 + 숫자 */}
-      <div style={{ flex: 1, position: 'relative', height: BAR_H, minWidth: 0 }}>
-        <div
-          style={{
-            position: 'absolute',
-            left: 0, top: 4,
-            height: BAR_H - 8,
-            width: fillW,
-            background: color,
-            borderRadius: '0 3px 3px 0',
-            transition: 'width 0.45s ease',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: fillW + 5,
-            top: 0,
-            height: BAR_H,
-            lineHeight: `${BAR_H}px`,
-            fontSize: 10,
-            color: '#555',
-            whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
-            transition: 'left 0.45s ease',
-          }}
-        >
-          {Math.round(item.price).toLocaleString()}
-        </div>
-      </div>
-    </div>
-  );
+// raceJson 로드 시 동→색상 매핑 (정렬 순서로 할당 → 최대 분산)
+function buildDongColorMap(json: RaceJson): Record<string, string> {
+  const dongs = [...new Set(Object.values(json.apts).map(a => a.dong))].sort();
+  return Object.fromEntries(dongs.map((dong, i) => [dong, PALETTE[i % PALETTE.length]]));
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// frameProgress에서 보간된 DisplayItem 목록을 계산 (매 rAF 프레임 호출)
+function computeDisplay(
+  frameProgress: number,
+  frames: FrameItem[][],
+  raceJson: RaceJson,
+): { items: DisplayItem[]; ym: string; maxPrice: number } {
+  const fi  = Math.max(0, Math.min(Math.floor(frameProgress), frames.length - 2));
+  const rawT = Math.max(0, Math.min(frameProgress - fi, 1));
+  const t    = easeInOut(rawT);
+
+  const curFrame = frames[fi];
+  const nxtFrame = frames[fi + 1] ?? curFrame;
+
+  const cMap = new Map(curFrame.map((x, i) => [x.key, { i, price: x.price, item: x }]));
+  const nMap = new Map(nxtFrame.map((x, i) => [x.key, { i, price: x.price, item: x }]));
+  const keys = new Set([...cMap.keys(), ...nMap.keys()]);
+
+  const items: DisplayItem[] = [];
+  for (const key of keys) {
+    const c = cMap.get(key), n = nMap.get(key);
+    const base = (c ?? n)!.item;
+    let rank: number, price: number, opacity: number;
+
+    if (c && n) {
+      rank    = c.i + (n.i - c.i) * t;
+      price   = c.price + (n.price - c.price) * t;
+      opacity = 1;
+    } else if (c) {
+      // 퇴장: 현재 rank → 화면 아래
+      rank    = c.i + (TOP_N + 1 - c.i) * t;
+      price   = c.price;
+      opacity = Math.max(0, 1 - t * 3);
+    } else {
+      // 진입: 화면 아래 → 새 rank
+      rank    = (TOP_N + 1) - ((TOP_N + 1) - n!.i) * t;
+      price   = n!.price;
+      opacity = Math.min(1, t * 3);
+    }
+    items.push({ key, aptNm: base.aptNm, dong: base.dong, rank, price, opacity });
+  }
+
+  items.sort((a, b) => a.rank - b.rank);
+  const maxPrice = Math.max(curFrame[0]?.price ?? 1, nxtFrame[0]?.price ?? 1);
+  return { items, ym: raceJson.months[fi] ?? '', maxPrice };
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function PriceRaceClient() {
   const [selectedGu, setSelectedGu] = useState('');
-  const [areaType, setAreaType]     = useState<AreaType>('84');
+  const [areaType,   setAreaType]   = useState<AreaType>('84');
+  const [raceJson,   setRaceJson]   = useState<RaceJson | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [loadError,  setLoadError]  = useState(false);
+  const [started,    setStarted]    = useState(false);
+  const [playing,    setPlaying]    = useState(false);
 
-  const [frames,    setFrames]    = useState<FrameItem[][]>([]);
-  const [raceJson,  setRaceJson]  = useState<RaceJson | null>(null);
-  const [loading,   setLoading]   = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [started,   setStarted]   = useState(false);
-  const [playing,   setPlaying]   = useState(false);
-  const [frameIdx,  setFrameIdx]  = useState(0);
+  // 연속 보간을 위한 float 프레임 인덱스 (0 ~ frames.length-1)
+  const [frameProgress, setFrameProgress] = useState(0);
 
-  // exiting bars 관리
-  const [exitItems, setExitItems] = useState<ExitItem[]>([]);
-  const exitCounterRef = useRef(0);
-
-  // 이전 프레임 rank map (key → rank)
-  const prevRankRef = useRef<Map<string, number>>(new Map());
-
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const wrapRef  = useRef<HTMLDivElement>(null);
+  const framesRef      = useRef<FrameItem[][]>([]);
+  const rafRef         = useRef<number | null>(null);
+  const startTsRef     = useRef(0);
+  const startProgRef   = useRef(0);
+  const wrapRef        = useRef<HTMLDivElement>(null);
   const [barAreaW, setBarAreaW] = useState(500);
 
-  // 컨테이너 너비 → barAreaW
+  // 컨테이너 너비 측정
   useEffect(() => {
-    if (!wrapRef.current) return;
-    const obs = new ResizeObserver(e => setBarAreaW(e[0].contentRect.width - LABEL_W));
-    obs.observe(wrapRef.current);
+    const el = wrapRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(e =>
+      setBarAreaW(Math.max(e[0].contentRect.width - LABEL_W, 80))
+    );
+    obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [started]);
 
-  // 구/면적 변경 시 완전 리셋
+  // 구/면적 변경 시 리셋
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setFrames([]); setRaceJson(null); setStarted(false); setPlaying(false);
-    setFrameIdx(0); setExitItems([]); setLoadError(false);
-    prevRankRef.current = new Map();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setRaceJson(null);
+    framesRef.current = [];
+    setStarted(false);
+    setPlaying(false);
+    setFrameProgress(0);
+    setLoadError(false);
   }, [selectedGu, areaType]);
 
-  // 프레임 바뀔 때: exiting 바 계산 및 추가
+  // ── rAF 루프: playing이 true가 될 때만 시작 ──────────────────────────────
   useEffect(() => {
-    if (frames.length === 0 || frameIdx === 0) return;
+    if (!playing || !framesRef.current.length) return;
 
-    const prev = frames[frameIdx - 1] ?? [];
-    const cur  = frames[frameIdx]     ?? [];
-    const curKeys = new Set(cur.map(x => x.key));
-    const prevMap  = prevRankRef.current;
+    // playing이 켜지는 시점의 frameProgress를 기준으로 삼음
+    startTsRef.current   = performance.now();
+    startProgRef.current = frameProgress; // 클로저로 캡처 (최신 값)
 
-    const newExits: ExitItem[] = [];
-    prev.forEach(item => {
-      if (!curKeys.has(item.key)) {
-        newExits.push({
-          ...item,
-          lastRank: prevMap.get(item.key) ?? TOP_N,
-          id: exitCounterRef.current++,
-        });
+    const frames = framesRef.current;
+    let id: number;
+
+    const loop = (ts: number) => {
+      const elapsed = ts - startTsRef.current;
+      const newProg = startProgRef.current + elapsed / MS_PER_MONTH;
+
+      if (newProg >= frames.length - 1) {
+        setFrameProgress(frames.length - 1);
+        setPlaying(false);
+        return;
       }
-    });
+      setFrameProgress(newProg);
+      id = requestAnimationFrame(loop);
+    };
 
-    if (newExits.length > 0) {
-      setExitItems(prev2 => [...prev2, ...newExits]);
-      // EXIT_DURATION 후 제거
-      setTimeout(() => {
-        setExitItems(prev2 => prev2.filter(e => !newExits.some(n => n.id === e.id)));
-      }, EXIT_DURATION + 50);
-    }
+    id = requestAnimationFrame(loop);
+    rafRef.current = id;
+    return () => cancelAnimationFrame(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing]); // frameProgress를 deps에서 제외 — 매 프레임 effect 재실행 방지
 
-    // prevRank 갱신
-    const newMap = new Map<string, number>();
-    cur.forEach((item, rank) => newMap.set(item.key, rank));
-    prevRankRef.current = newMap;
-  }, [frameIdx, frames]);
+  // ── 컨트롤 ───────────────────────────────────────────────────────────────
 
-  // 시작
   const handleStart = useCallback(async () => {
     if (!selectedGu) return;
-    if (timerRef.current) clearInterval(timerRef.current);
-    setPlaying(false); setStarted(false); setFrameIdx(0);
-    setExitItems([]); prevRankRef.current = new Map();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setPlaying(false);
+    setStarted(false);
+    setFrameProgress(0);
 
     let json = raceJson;
     if (!json) {
-      setLoading(true); setLoadError(false);
+      setLoading(true);
+      setLoadError(false);
       try {
         const safe = areaType.replace('+', 'plus');
         const res  = await fetch(`/data/race/${encodeURIComponent(selectedGu)}_${safe}.json`);
@@ -264,53 +226,69 @@ export default function PriceRaceClient() {
         json = await res.json() as RaceJson;
         setRaceJson(json);
       } catch {
-        setLoadError(true); setLoading(false); return;
+        setLoadError(true);
+        setLoading(false);
+        return;
       }
       setLoading(false);
     }
 
-    const f = buildFrames(json);
-    setFrames(f);
-    setFrameIdx(0);
+    framesRef.current = buildFrames(json);
     setStarted(true);
     setPlaying(true);
   }, [selectedGu, areaType, raceJson]);
 
-  // 타이머
-  useEffect(() => {
-    if (!playing || frames.length === 0) return;
-    timerRef.current = setInterval(() => {
-      setFrameIdx(prev => {
-        if (prev >= frames.length - 1) { setPlaying(false); clearInterval(timerRef.current!); return prev; }
-        return prev + 1;
-      });
-    }, MS_PER_MONTH);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [playing, frames]);
+  const handlePause = useCallback(() => {
+    setPlaying(false);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
 
-  const handlePause  = () => { setPlaying(false); if (timerRef.current) clearInterval(timerRef.current); };
-  const handleResume = () => {
-    if (frameIdx >= frames.length - 1) {
-      // 처음부터
-      setFrameIdx(0); setExitItems([]); prevRankRef.current = new Map();
-      setTimeout(() => setPlaying(true), 0);
+  const handleResume = useCallback(() => {
+    const frames = framesRef.current;
+    if (frameProgress >= frames.length - 1) {
+      // 처음부터 재시작
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setPlaying(false);
+      setFrameProgress(0);
+      setTimeout(() => setPlaying(true), 0); // 상태 반영 후 재생
     } else {
       setPlaying(true);
     }
-  };
+  }, [frameProgress]);
 
-  const currentFrame = frames[frameIdx] ?? [];
-  const currentYm    = raceJson ? (raceJson.months[frameIdx] ?? '') : '';
-  const maxPrice     = currentFrame[0]?.price ?? 1;
+  const handleSlider = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setPlaying(false);
+    setFrameProgress(Number(e.target.value));
+  }, []);
 
-  // 이전 프레임에 없던 key = 진입 바
-  const prevFrameKeys = useMemo(() => {
-    if (frameIdx === 0) return new Set<string>();
-    return new Set((frames[frameIdx - 1] ?? []).map(x => x.key));
-  }, [frames, frameIdx]);
+  // ── 동 → 색상 맵 ─────────────────────────────────────────────────────────
 
-  // 날짜 display
-  const ymDisplay = currentYm ? currentYm.slice(0, 4) + '.' + currentYm.slice(5, 7) : '';
+  const dongColorMap = useMemo(
+    () => (raceJson ? buildDongColorMap(raceJson) : ({} as Record<string, string>)),
+    [raceJson],
+  );
+
+  // ── 보간된 표시 데이터 계산 (매 렌더 = 60fps 동안 매 프레임) ─────────────
+
+  const frames = framesRef.current;
+  const hasFrames = frames.length > 0 && raceJson != null;
+
+  const { items: displayItems, ym: currentYm, maxPrice } = hasFrames
+    ? computeDisplay(frameProgress, frames, raceJson!)
+    : { items: [] as DisplayItem[], ym: '', maxPrice: 1 };
+
+  const ymDisplay = currentYm
+    ? currentYm.slice(0, 4) + '.' + currentYm.slice(5, 7)
+    : '';
+  const sliderVal = Math.min(frameProgress, frames.length - 1);
+  const isFinished = sliderVal >= frames.length - 1 && frames.length > 0;
+
+  const visibleDongs = [...new Set(
+    displayItems.filter(x => x.opacity > 0.4).map(x => x.dong)
+  )].sort();
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="page-wrap">
@@ -381,10 +359,10 @@ export default function PriceRaceClient() {
       )}
 
       {/* 레이스 */}
-      {started && frames.length > 0 && (
+      {started && hasFrames && (
         <div>
-          {/* 컨트롤 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          {/* 컨트롤 바 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <button
               onClick={playing ? handlePause : handleResume}
               style={{
@@ -393,76 +371,115 @@ export default function PriceRaceClient() {
                 fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
               }}
             >
-              {playing ? '일시정지' : frameIdx >= frames.length - 1 ? '처음부터' : '재생'}
+              {playing ? '일시정지' : isFinished ? '처음부터' : '재생'}
             </button>
             <input
-              type="range" min={0} max={frames.length - 1} value={frameIdx}
-              onChange={e => { handlePause(); setFrameIdx(Number(e.target.value)); }}
+              type="range"
+              min={0}
+              max={frames.length - 1}
+              step={0.01}
+              value={sliderVal}
+              onChange={handleSlider}
               style={{ flex: 1 }}
             />
-            <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', minWidth: 52, textAlign: 'right' }}>
-              {raceJson?.months[frameIdx]?.replace('-', '.').replace('-', '.') ?? ''}
+            <span style={{
+              fontSize: 12, color: '#888', whiteSpace: 'nowrap',
+              minWidth: 50, textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+            }}>
+              {currentYm.replace('-', '.').replace('-', '.')}
             </span>
           </div>
 
-          {/* 차트 */}
+          {/* 차트 영역 */}
           <div
             ref={wrapRef}
             style={{ position: 'relative', width: '100%', height: CHART_H, overflow: 'hidden' }}
           >
             {/* 날짜 워터마크 */}
-            <div
-              style={{
-                position: 'absolute', right: 4, top: 0,
-                fontSize: 32, fontWeight: 800,
-                color: 'rgba(0,0,0,0.07)',
-                lineHeight: 1, fontVariantNumeric: 'tabular-nums',
-                pointerEvents: 'none', userSelect: 'none', zIndex: 2,
-                letterSpacing: '-0.02em',
-              }}
-            >
+            <div style={{
+              position: 'absolute', right: 4, top: 0,
+              fontSize: 32, fontWeight: 800,
+              color: 'rgba(0,0,0,0.07)',
+              lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+              pointerEvents: 'none', userSelect: 'none', zIndex: 2,
+              letterSpacing: '-0.02em',
+            }}>
               {ymDisplay}
             </div>
 
-            {/* 현재 프레임 바들 */}
-            {currentFrame.map((item, rank) => (
-              <Bar
-                key={item.key}
-                item={item}
-                rank={rank}
-                maxPrice={maxPrice}
-                barAreaW={Math.max(barAreaW, 100)}
-                isNew={frameIdx > 0 && !prevFrameKeys.has(item.key)}
-                isExit={false}
-              />
-            ))}
+            {/* 바들 — top은 JS 보간값, CSS transition 없음 */}
+            {displayItems.map(item => {
+              const color  = dongColorMap[item.dong] ?? '#888';
+              const fillW  = Math.max(Math.round((item.price / maxPrice) * barAreaW), 3);
+              const topPx  = item.rank * ROW_H;
 
-            {/* 퇴장 바들 */}
-            {exitItems.map(exit => (
-              <Bar
-                key={`exit-${exit.id}`}
-                item={exit}
-                rank={exit.lastRank}
-                maxPrice={maxPrice}
-                barAreaW={Math.max(barAreaW, 100)}
-                isNew={false}
-                isExit={true}
-                exitRank={exit.lastRank}
-              />
-            ))}
+              return (
+                <div
+                  key={item.key}
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: topPx,
+                    width: '100%',
+                    height: BAR_H,
+                    opacity: item.opacity,
+                    display: 'flex',
+                    alignItems: 'center',
+                    willChange: 'top, opacity',
+                  }}
+                >
+                  {/* 아파트명 */}
+                  <div style={{
+                    width: LABEL_W, flexShrink: 0,
+                    fontSize: 11, color: '#222',
+                    textAlign: 'right', paddingRight: 8,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    lineHeight: `${BAR_H}px`, fontWeight: 500,
+                  }} title={item.aptNm}>
+                    {item.aptNm}
+                  </div>
+
+                  {/* 바 + 가격 */}
+                  <div style={{ flex: 1, position: 'relative', height: BAR_H, minWidth: 0 }}>
+                    <div style={{
+                      position: 'absolute',
+                      left: 0, top: 4,
+                      height: BAR_H - 8,
+                      width: fillW,
+                      background: color,
+                      borderRadius: '0 3px 3px 0',
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      left: fillW + 5, top: 0,
+                      height: BAR_H,
+                      lineHeight: `${BAR_H}px`,
+                      fontSize: 10, color: '#555',
+                      whiteSpace: 'nowrap',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>
+                      {Math.round(item.price).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* 동 범례 */}
-          <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', gap: '5px 14px' }}>
-            {Array.from(new Set(currentFrame.map(x => x.dong))).sort().map(dong => (
+          <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: '5px 14px' }}>
+            {visibleDongs.map(dong => (
               <div key={dong} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 9, height: 9, background: dongColor(dong), borderRadius: 2, flexShrink: 0 }} />
+                <div style={{
+                  width: 9, height: 9,
+                  background: dongColorMap[dong] ?? '#888',
+                  borderRadius: 2, flexShrink: 0,
+                }} />
                 <span style={{ fontSize: 11, color: '#555' }}>{dong}</span>
               </div>
             ))}
           </div>
 
-          {/* 단위 안내 */}
           <p style={{ marginTop: 14, fontSize: 11, color: '#aaa', margin: '14px 0 0' }}>
             단위: 만원/㎡ (전용면적 기준) · 거래 없는 달은 직전 거래가 유지
           </p>
