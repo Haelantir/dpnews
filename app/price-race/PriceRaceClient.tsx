@@ -29,7 +29,7 @@ const SEOUL_DISTRICTS = [
 
 const TOP_N = 20;
 const MS_PER_MONTH = 1050;  // 1.05초/월 → 77개월 ≈ 81초
-const BAR_H = 30;
+const BAR_H = 36;
 const BAR_GAP = 5;
 const ROW_H = BAR_H + BAR_GAP;
 const CHART_H = TOP_N * ROW_H - BAR_GAP;
@@ -431,15 +431,15 @@ export default function PriceRaceClient() {
                   {/* 아파트명 */}
                   <div style={{
                     width: LABEL_W, flexShrink: 0,
-                    fontSize: 11, color: '#222',
+                    fontSize: 14, color: '#222',
                     textAlign: 'right', paddingRight: 8,
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    lineHeight: `${BAR_H}px`, fontWeight: 500,
+                    lineHeight: `${BAR_H}px`, fontWeight: 600,
                   }} title={item.aptNm}>
                     {item.aptNm}
                   </div>
 
-                  {/* 바 + 가격 */}
+                  {/* 바 — 가격은 바 오른쪽 안쪽에 */}
                   <div style={{ flex: 1, position: 'relative', height: BAR_H, minWidth: 0 }}>
                     <div style={{
                       position: 'absolute',
@@ -448,17 +448,20 @@ export default function PriceRaceClient() {
                       width: fillW,
                       background: color,
                       borderRadius: '0 3px 3px 0',
-                    }} />
-                    <div style={{
-                      position: 'absolute',
-                      left: fillW + 5, top: 0,
-                      height: BAR_H,
-                      lineHeight: `${BAR_H}px`,
-                      fontSize: 10, color: '#555',
-                      whiteSpace: 'nowrap',
-                      fontVariantNumeric: 'tabular-nums',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
                     }}>
-                      {Math.round(item.price).toLocaleString()}
+                      <span style={{
+                        paddingRight: 7,
+                        fontSize: 14, fontWeight: 700,
+                        color: 'rgba(255,255,255,0.92)',
+                        whiteSpace: 'nowrap',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
+                        {Math.round(item.price).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 </div>
