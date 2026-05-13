@@ -32,7 +32,8 @@ const MS_PER_MONTH = 1050;  // 1.05초/월 → 77개월 ≈ 81초
 const BAR_H = 36;
 const BAR_GAP = 5;
 const ROW_H = BAR_H + BAR_GAP;
-const CHART_H = TOP_N * ROW_H - BAR_GAP;
+const CHART_OFFSET_TOP = 48; // 날짜 워터마크와 1등 바가 겹치지 않도록 바를 아래로 밀기
+const CHART_H = TOP_N * ROW_H - BAR_GAP + CHART_OFFSET_TOP;
 const LABEL_W = 132;
 
 // 스펙트럼 전체를 커버하는 20색 팔레트
@@ -129,7 +130,10 @@ function computeDisplay(
   }
 
   items.sort((a, b) => a.rank - b.rank);
-  const maxPrice = Math.max(curFrame[0]?.price ?? 1, nxtFrame[0]?.price ?? 1);
+  // maxPrice도 보간 → 1등 가격이 급변해도 차트 스케일이 부드럽게 리스케일됨
+  const curMax = curFrame[0]?.price ?? 1;
+  const nxtMax = nxtFrame[0]?.price ?? 1;
+  const maxPrice = curMax + (nxtMax - curMax) * t;
   return { items, ym: raceJson.months[fi] ?? '', maxPrice };
 }
 
@@ -411,7 +415,7 @@ export default function PriceRaceClient() {
             {displayItems.map(item => {
               const color  = dongColorMap[item.dong] ?? '#888';
               const fillW  = Math.max(Math.round((item.price / maxPrice) * barAreaW), 3);
-              const topPx  = item.rank * ROW_H;
+              const topPx  = item.rank * ROW_H + CHART_OFFSET_TOP;
 
               return (
                 <div
