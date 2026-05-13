@@ -28,7 +28,7 @@ const SEOUL_DISTRICTS = [
 ];
 
 const TOP_N = 20;
-const MS_PER_MONTH = 700;   // 0.7초/월 → 77개월 ≈ 54초
+const MS_PER_MONTH = 1050;  // 1.05초/월 → 77개월 ≈ 81초
 const BAR_H = 30;
 const BAR_GAP = 5;
 const ROW_H = BAR_H + BAR_GAP;
