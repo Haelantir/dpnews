@@ -190,6 +190,16 @@ html { scrollbar-gutter: stable; }
 .seoul-rank-table .srt-dong  { width: 72px; }
 .seoul-rank-table .srt-price { width: 88px; }
 
+/* ── Price Race animations ────────────────────────────────────────── */
+@keyframes raceBarEnter {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes raceBarExit {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-24px); }
+}
+
 /* ── Mobile ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   /* Navbar */

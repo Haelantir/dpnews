@@ -271,6 +271,12 @@ def main():
         print("\n지도 데이터 갱신 중...")
         subprocess.run([_sys.executable, _map_script], check=False)
 
+    # 시세 레이스 정적 JSON 갱신
+    _race_script = os.path.join(DATA_DIR, 'gen-race-data.py')
+    if os.path.exists(_race_script):
+        print("\n시세 레이스 데이터 갱신 중...")
+        subprocess.run([_sys.executable, _race_script], check=False)
+
 
 if __name__ == "__main__":
     main()
