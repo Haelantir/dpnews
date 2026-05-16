@@ -32,7 +32,7 @@ export default async function NoticesPage() {
     <div className="page-wrap">
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>블로그</h1>
-        <p style={{ fontSize: 13, color: '#999', margin: 0 }}>서울집주인의 소식을 전합니다.</p>
+        <p style={{ fontSize: 13, color: '#999', margin: 0 }}>서울 집주인들이 꼭 알아야 할 소식을 빠르게 전합니다.</p>
       </div>
 
       {notices.length === 0 ? (
