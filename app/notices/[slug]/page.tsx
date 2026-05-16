@@ -28,7 +28,7 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const notice: Notice = await client.fetch(noticeBySlugQuery, { slug })
-  if (!notice) return { title: '서울집주인 - 공지사항' }
+  if (!notice) return { title: '서울집주인 - 블로그' }
   const title = `서울집주인 - ${notice.title}`
   return {
     title,
@@ -74,7 +74,7 @@ export default async function NoticePage({ params }: Props) {
     return (
       <div className="page-wrap">
         <p style={{ color: '#aaa' }}>글을 찾을 수 없습니다.</p>
-        <Link href="/notices" style={{ fontSize: 13, color: '#555' }}>← 공지사항 목록</Link>
+        <Link href="/notices" style={{ fontSize: 13, color: '#555' }}>← 블로그 목록</Link>
       </div>
     )
   }
@@ -82,7 +82,7 @@ export default async function NoticePage({ params }: Props) {
   return (
     <div className="page-wrap">
       <Link href="/notices" style={{ fontSize: 13, color: '#888', textDecoration: 'none', display: 'inline-block', marginBottom: 24 }}>
-        ← 공지사항 목록
+        ← 블로그 목록
       </Link>
 
       <article>

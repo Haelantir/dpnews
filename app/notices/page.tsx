@@ -6,9 +6,9 @@ import { noticesQuery } from '@/lib/sanity.queries'
 export const revalidate = 60
 
 export const metadata: Metadata = {
-  title: '서울집주인 - 공지사항',
+  title: '서울집주인 - 블로그',
   description: '서울집주인 공지사항 및 업데이트 소식을 확인하세요.',
-  openGraph: { title: '서울집주인 - 공지사항', description: '서울집주인 공지사항 및 업데이트 소식을 확인하세요.' },
+  openGraph: { title: '서울집주인 - 블로그', description: '서울집주인 공지사항 및 업데이트 소식을 확인하세요.' },
 }
 
 interface Notice {
@@ -30,7 +30,7 @@ export default async function NoticesPage() {
   return (
     <div className="page-wrap">
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>공지사항</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111', margin: 0, marginBottom: 6 }}>블로그</h1>
         <p style={{ fontSize: 13, color: '#999', margin: 0 }}>서울집주인의 소식을 전합니다.</p>
       </div>
 
