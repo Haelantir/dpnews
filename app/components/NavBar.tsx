@@ -10,7 +10,7 @@ const TABS = [
   { label: '서울 아파트값 순위', href: '/seoul-ranking', isNew: true },
   { label: '예산에 맞는 아파트', href: '/budget-apts', isNew: true },
   { label: '시세 레이스', href: '/price-race', isNew: true },
-  { label: '블로그', href: '/notices' },
+  { label: '블로그', href: '/blog' },
 ];
 
 export default function NavBar() {

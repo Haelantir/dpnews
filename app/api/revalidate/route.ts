@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const slug: string | undefined = body?._id && body?.slug?.current
 
-  revalidatePath('/notices', 'page')
-  if (slug) revalidatePath(`/notices/${slug}`, 'page')
+  revalidatePath('/blog', 'page')
+  if (slug) revalidatePath(`/blog/${slug}`, 'page')
 
   return NextResponse.json({ revalidated: true, slug: slug ?? 'all' })
 }

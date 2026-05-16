@@ -42,7 +42,7 @@ export default async function NoticesPage() {
           {notices.map((notice, i) => (
             <Link
               key={notice._id}
-              href={`/notices/${notice.slug.current}`}
+              href={`/blog/${notice.slug.current}`}
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
               <div style={{

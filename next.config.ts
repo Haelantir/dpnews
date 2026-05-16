@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: '/notices', destination: '/blog', permanent: true },
+      { source: '/notices/:slug', destination: '/blog/:slug', permanent: true },
+    ]
+  },
   outputFileTracingIncludes: {
     "/api/filter-data": ["./data/**"],
     "/api/areas": ["./data/**"],

@@ -74,14 +74,14 @@ export default async function NoticePage({ params }: Props) {
     return (
       <div className="page-wrap">
         <p style={{ color: '#aaa' }}>글을 찾을 수 없습니다.</p>
-        <Link href="/notices" style={{ fontSize: 13, color: '#555' }}>← 블로그 목록</Link>
+        <Link href="/blog" style={{ fontSize: 13, color: '#555' }}>← 블로그 목록</Link>
       </div>
     )
   }
 
   return (
     <div className="page-wrap">
-      <Link href="/notices" style={{ fontSize: 13, color: '#888', textDecoration: 'none', display: 'inline-block', marginBottom: 24 }}>
+      <Link href="/blog" style={{ fontSize: 13, color: '#888', textDecoration: 'none', display: 'inline-block', marginBottom: 24 }}>
         ← 블로그 목록
       </Link>
 
