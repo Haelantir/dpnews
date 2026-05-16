@@ -95,19 +95,6 @@ export default async function NoticePage({ params }: Props) {
           )}
         </header>
 
-        {notice.mainImage?.asset?.url && (
-          <div style={{ marginBottom: 32 }}>
-            <Image
-              src={notice.mainImage.asset.url}
-              alt={notice.mainImage.alt ?? notice.title}
-              width={notice.mainImage.asset.metadata.dimensions.width}
-              height={notice.mainImage.asset.metadata.dimensions.height}
-              style={{ width: '100%', height: 'auto', borderRadius: 4 }}
-              priority
-            />
-          </div>
-        )}
-
         <div style={{
           fontSize: 15, lineHeight: 1.85, color: '#333',
           fontFamily: 'system-ui, -apple-system, sans-serif',

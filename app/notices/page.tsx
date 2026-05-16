@@ -50,9 +50,20 @@ export default async function NoticesPage() {
                 borderBottom: '1px solid #eee',
                 borderTop: i === 0 ? '2px solid #111' : 'none',
                 display: 'flex',
-                gap: 16,
+                gap: 14,
                 alignItems: 'flex-start',
               }}>
+                {notice.mainImage?.asset?.url && (
+                  <Image
+                    src={notice.mainImage.asset.url}
+                    alt={notice.title}
+                    width={88}
+                    height={66}
+                    quality={60}
+                    sizes="88px"
+                    style={{ objectFit: 'cover', borderRadius: 4, flexShrink: 0, width: 88, height: 66 }}
+                  />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 16, fontWeight: 600, color: '#111', lineHeight: 1.4 }}>
@@ -69,15 +80,6 @@ export default async function NoticesPage() {
                     </p>
                   )}
                 </div>
-                {notice.mainImage?.asset?.url && (
-                  <Image
-                    src={notice.mainImage.asset.url}
-                    alt={notice.title}
-                    width={96}
-                    height={72}
-                    style={{ objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
-                  />
-                )}
               </div>
             </Link>
           ))}
